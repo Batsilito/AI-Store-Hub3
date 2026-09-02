@@ -50,3 +50,9 @@ Pay Later requires a separate v6 eligibility/session path: check `paylater`, rea
 **Why:** Pay Later offers are restricted by market and transaction context; showing a handmade installment promise or bypassing eligibility would violate PayPal's integration and messaging requirements.
 
 **How to apply:** Treat Pay Later as an optional USD payment method backed by the same server-side order and capture validation as PayPal Checkout, without assuming Egypt-based merchants or buyers qualify.
+
+PayPal v6 `paymentSession.start()` resolving only means the hosted flow has returned; it is not payment approval. Capture must begin only from `onApprove(data.orderId)`, while `onCancel` and `onError` remain non-payment paths.
+
+**Why:** The hosted popup can close after review without completing a transaction, and treating `start()` resolution as success can confirm unpaid local orders.
+
+**How to apply:** Keep the session promise and approval callback separate, log both during Sandbox debugging, and require a completed server-side capture before changing the local order to paid.

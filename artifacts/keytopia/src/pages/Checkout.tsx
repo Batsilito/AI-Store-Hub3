@@ -78,6 +78,7 @@ function safePayPalDiagnostic(value: unknown): Record<string, unknown> {
     code: typeof raw.code === 'string' ? raw.code : null,
     message: typeof raw.message === 'string' ? raw.message : null,
     orderId: typeof raw.orderId === 'string' ? raw.orderId : null,
+    requestId: typeof raw.requestId === 'string' ? raw.requestId : null,
     debug_id: typeof raw.debug_id === 'string' ? raw.debug_id : typeof raw.paypalDebugId === 'string' ? raw.paypalDebugId : null,
     details,
   };
@@ -210,19 +211,45 @@ function PayPalCheckout({ method, cardMode, payLaterDetails, sdk, createOrder, c
         return () => { active = false; buttonsContainer.current?.replaceChildren(); };
       }
       const session = createSession({
-        onApprove: ({ orderId }) => onSuccess(orderId),
-        onCancel: () => onError(method === 'paylater'
-          ? (isRtl ? 'تم إلغاء الدفع بالتقسيط. يمكنك المحاولة مرة أخرى.' : 'Pay Later payment was cancelled. You can try again.')
-          : (isRtl ? 'تم إلغاء الدفع. يمكنك المحاولة مرة أخرى.' : 'Payment was cancelled. You can try again.')),
+        onApprove: (data) => {
+          approvedRef.current = true;
+          reportPayPalDiagnostic('session onApprove', data);
+          const orderId = data?.orderId;
+          if (!orderId) {
+            onError(isRtl ? 'لم يُرجع PayPal رقم عملية الدفع. لم يتم تأكيد الطلب.' : 'PayPal did not return a payment order ID. The order was not confirmed.');
+            return Promise.resolve();
+          }
+          return onSuccess(orderId);
+        },
+        onCancel: (data) => {
+          reportPayPalDiagnostic('session onCancel', { ...data, approvedAlready: approvedRef.current });
+          if (approvedRef.current) {
+            reportPayPalDiagnostic('ignored onCancel after onApprove', data);
+            return;
+          }
+          sessionStartedRef.current = false;
+          onError(method === 'paylater'
+            ? (isRtl ? 'تم إلغاء الدفع بالتقسيط. يمكنك المحاولة مرة أخرى.' : 'Pay Later payment was cancelled. You can try again.')
+            : (isRtl ? 'تم إلغاء الدفع. يمكنك المحاولة مرة أخرى.' : 'Payment was cancelled. You can try again.'));
+        },
         onError: (error) => {
+          reportPayPalDiagnostic('session onError', error);
           reportPayPalError(error, method === 'paylater' ? 'Pay Later session error' : 'PayPal session error');
+          if (!approvedRef.current) sessionStartedRef.current = false;
           onError(checkoutErrorMessage(error, isRtl, method === 'paylater'
             ? (isRtl ? 'تعذر بدء الدفع بالتقسيط. حاول مرة أخرى.' : 'Pay Later could not be started. Please try again.')
             : (isRtl ? 'PayPal غير متاح حالياً. حاول مرة أخرى لاحقاً.' : 'PayPal is currently unavailable. Please try again later.')));
         },
+        onComplete: (data) => reportPayPalDiagnostic('session onComplete', data),
       });
       const startPayPal = () => {
-        void session.start({ presentationMode: 'auto' }, createOrder()).catch((error) => {
+        if (!active || disabled || sessionStartedRef.current) return;
+        sessionStartedRef.current = true;
+        reportPayPalDiagnostic('paymentSession.start', { method, presentationMode: 'auto', orderPromise: 'createOrder()' });
+        void session.start({ presentationMode: 'auto' }, createOrder()).then(() => {
+          reportPayPalDiagnostic('paymentSession.start resolved without capture', { method, note: 'Waiting for onApprove before capture.' });
+        }).catch((error) => {
+          if (!approvedRef.current) sessionStartedRef.current = false;
           reportPayPalError(error, method === 'paylater' ? 'Pay Later session error' : 'PayPal session error');
           if (active) onError(checkoutErrorMessage(error, isRtl, method === 'paylater'
             ? (isRtl ? 'تعذر بدء الدفع بالتقسيط. حاول مرة أخرى.' : 'Pay Later could not be started. Please try again.')
@@ -248,7 +275,11 @@ function PayPalCheckout({ method, cardMode, payLaterDetails, sdk, createOrder, c
         active = false;
         if (autoStartTimer) clearTimeout(autoStartTimer);
         button.removeEventListener('click', handleClick);
-        buttonsContainer.current?.replaceChildren();
+        if (sessionStartedRef.current && !approvedRef.current) {
+          reportPayPalDiagnostic('React cleanup preserved active PayPal session', { method });
+        } else {
+          buttonsContainer.current?.replaceChildren();
+        }
       };
     }
 
@@ -266,6 +297,8 @@ function PayPalCheckout({ method, cardMode, payLaterDetails, sdk, createOrder, c
       container.appendChild(basicCardContainer);
       const guestSession = sdk.createPayPalGuestOneTimePaymentSession?.({
         onApprove: (data) => {
+          approvedRef.current = true;
+          reportPayPalDiagnostic('guest card session onApprove', data);
           const orderId = data?.orderId;
           if (!orderId) {
             onError(isRtl ? 'لم يُرجع PayPal رقم عملية الدفع. لم يتم تأكيد الطلب.' : 'PayPal did not return a payment order ID. The order was not confirmed.');
@@ -273,11 +306,22 @@ function PayPalCheckout({ method, cardMode, payLaterDetails, sdk, createOrder, c
           }
           return onSuccess(orderId);
         },
-        onCancel: () => onError(isRtl ? 'تم إلغاء الدفع بالبطاقة. يمكنك المحاولة مرة أخرى.' : 'Card payment was cancelled. You can try again.'),
+        onCancel: (data) => {
+          reportPayPalDiagnostic('guest card session onCancel', { ...data, approvedAlready: approvedRef.current });
+          if (approvedRef.current) {
+            reportPayPalDiagnostic('ignored guest card onCancel after onApprove', data);
+            return;
+          }
+          sessionStartedRef.current = false;
+          onError(isRtl ? 'تم إلغاء الدفع بالبطاقة. يمكنك المحاولة مرة أخرى.' : 'Card payment was cancelled. You can try again.');
+        },
         onError: (error) => {
+          reportPayPalDiagnostic('guest card session onError', error);
           reportPayPalError(error, 'Guest card session error');
+          if (!approvedRef.current) sessionStartedRef.current = false;
           onError(checkoutErrorMessage(error, isRtl, isRtl ? 'تعذر إتمام الدفع بالبطاقة. حاول مرة أخرى.' : 'Card payment could not be completed. Please try again.'));
         },
+        onComplete: (data) => reportPayPalDiagnostic('guest card session onComplete', data),
       });
 
       if (!guestSession) {
@@ -286,7 +330,13 @@ function PayPalCheckout({ method, cardMode, payLaterDetails, sdk, createOrder, c
       }
 
       const startGuestCard = () => {
-        void guestSession.start({ presentationMode: 'auto', targetElement: basicCardButton }, createOrder()).catch((error) => {
+        if (!active || disabled || sessionStartedRef.current) return;
+        sessionStartedRef.current = true;
+        reportPayPalDiagnostic('guest card paymentSession.start', { method: 'card', presentationMode: 'auto', targetElement: 'paypal-basic-card-button', orderPromise: 'createOrder()' });
+        void guestSession.start({ presentationMode: 'auto', targetElement: basicCardButton }, createOrder()).then(() => {
+          reportPayPalDiagnostic('guest card paymentSession.start resolved without capture', { note: 'Waiting for onApprove before capture.' });
+        }).catch((error) => {
+          if (!approvedRef.current) sessionStartedRef.current = false;
           reportPayPalError(error, 'Guest card session error');
           if (active) onError(checkoutErrorMessage(error, isRtl, isRtl ? 'تعذر بدء الدفع بالبطاقة. حاول مرة أخرى.' : 'Card payment could not start. Please try again.'));
         });
@@ -311,7 +361,11 @@ function PayPalCheckout({ method, cardMode, payLaterDetails, sdk, createOrder, c
         active = false;
         if (autoStartTimer) clearTimeout(autoStartTimer);
         basicCardButton.removeEventListener('click', handleGuestClick);
-        container.replaceChildren();
+        if (sessionStartedRef.current && !approvedRef.current) {
+          reportPayPalDiagnostic('React cleanup preserved active guest card session', { method: 'card' });
+        } else {
+          container.replaceChildren();
+        }
       };
     }
 
@@ -333,7 +387,7 @@ function PayPalCheckout({ method, cardMode, payLaterDetails, sdk, createOrder, c
       if (!active || disabled) return;
       try {
         const createdOrder = await createOrder();
-        const result = await cardSession.submit(createdOrder.orderId, { name: cardholderName.trim() || undefined });
+        const result = await cardSession.submit(createdOrder.orderId, { name: cardholderNameRef.current.trim() || undefined });
         if (result.state === 'succeeded') {
           await onSuccess(result.data?.orderId ?? createdOrder.orderId);
         } else if (result.state === 'canceled') {
@@ -358,7 +412,7 @@ function PayPalCheckout({ method, cardMode, payLaterDetails, sdk, createOrder, c
       fields.forEach((field) => field.destroy?.());
       container.replaceChildren();
     };
-  }, [method, cardMode, payLaterDetails, sdk, cardholderName, autoStart]);
+  }, [method, cardMode, payLaterDetails, sdk, autoStart]);
 
   if (method === 'paypal' || method === 'paylater') return <div className={disabled ? 'pointer-events-none opacity-60' : ''} ref={buttonsContainer} />;
   return <div className="space-y-2 rounded-xl border border-black/10 bg-white p-3 sm:p-4">
@@ -485,6 +539,7 @@ export default function Checkout() {
   const localOrderRef = useRef<any>(null);
   const idempotencyKeyRef = useRef(sessionStorage.getItem('checkout_idempotency') || crypto.randomUUID());
   const paymentDetailsRef = useRef<HTMLDivElement>(null);
+  const captureInFlightRef = useRef(false);
 
   const currency: PayCurrency = method === 'paypal' || method === 'paylater' || method === 'card' ? 'USD' : 'EGP';
   const subtotal = items.reduce((sum, item) => sum + (currency === 'USD' ? getItemUsdUnitPrice(item, rate) : getItemEgpUnitPrice(item, rate)) * item.quantity, 0);
@@ -551,10 +606,18 @@ export default function Checkout() {
     setBusy(true); setError('');
     try {
       const order = await createLocalOrder(method);
+      reportPayPalDiagnostic('local order ready for createOrder', { localOrderId: order.id, localOrderStatus: order.status, paymentMethod: order.paymentMethod, currency: order.currency, amount: order.total });
       const response = await fetch('/api/paypal/orders', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ localOrderId: order.id }) });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new PayPalCheckoutError(errorPayload(result), response.status, 'تعذر إنشاء عملية الدفع.');
-      return { orderId: result.paypalOrderId };
+      if (typeof result.paypalOrderId !== 'string' || !result.paypalOrderId) throw new PayPalCheckoutError(errorPayload(result), response.status, 'لم يُرجع PayPal رقم عملية الدفع.');
+      const returnedValue = { orderId: result.paypalOrderId };
+      reportPayPalDiagnostic('createOrder returned', returnedValue);
+      reportPayPalDiagnostic('PayPal order ID', { paypalOrderId: result.paypalOrderId, localOrderId: result.localOrderId ?? order.id });
+      return returnedValue;
+    } catch (error) {
+      reportPayPalError(error, 'createOrder failed');
+      throw error;
     } finally { setBusy(false); }
   };
 
@@ -568,20 +631,32 @@ export default function Checkout() {
   };
 
   const finish = async (order: any, automatic: boolean) => {
+    reportPayPalDiagnostic('final local order update starting', { localOrderId: order?.id ?? null, status: automatic ? 'confirmed' : 'awaiting_payment', automatic });
     await markCartRecovered(order.id);
     clearCart();
     queryClient.invalidateQueries({ queryKey: getGetMyCashbackQueryKey() });
     sessionStorage.removeItem('checkout_idempotency');
     setConfirmation({ order, automatic, whatsapp: whatsappUrl(order, automatic) });
+    reportPayPalDiagnostic('final local order update complete', { localOrderId: order?.id ?? null, status: automatic ? 'confirmed' : 'awaiting_payment', cartCleared: true, confirmationState: 'shown' });
   };
 
   const capture = async (paypalOrderId: string) => {
-    if (busy) return;
+    if (captureInFlightRef.current) {
+      reportPayPalDiagnostic('capture skipped because another capture is in flight', { paypalOrderId });
+      return;
+    }
+    captureInFlightRef.current = true;
     setBusy(true); setError('');
     try {
-      const response = await fetch(`/api/paypal/orders/${encodeURIComponent(paypalOrderId)}/capture`, { method: 'POST', credentials: 'include' });
+      const endpoint = `/api/paypal/orders/${encodeURIComponent(paypalOrderId)}/capture`;
+      reportPayPalDiagnostic('capture endpoint request', { method: 'POST', endpoint, paypalOrderId });
+      const response = await fetch(endpoint, { method: 'POST', credentials: 'include' });
       const result = await response.json().catch(() => ({}));
-      if (!response.ok || !result.completed) throw new PayPalCheckoutError(errorPayload(result), response.status, 'لم يتم تأكيد الدفع.');
+      reportPayPalDiagnostic('capture response', {
+        httpStatus: response.status,
+        body: safePayPalDiagnostic(result),
+      });
+      if (![200, 201].includes(response.status) || result.completed !== true) throw new PayPalCheckoutError(errorPayload(result), response.status, 'لم يتم تأكيد الدفع.');
       await finish(localOrderRef.current, true);
     } catch (e) {
       reportPayPalError(e, 'capture');
@@ -592,7 +667,10 @@ export default function Checkout() {
             ? `رفض PayPal إتمام العملية بسبب قيود امتثال أو إعدادات الحساب. استخدم حساب مشتري Sandbox صالحاً وتحقق من حساب التاجر ثم حاول مرة أخرى.${e.payload.paypalDebugId ? ` رمز التتبع: ${e.payload.paypalDebugId}` : ''}`
             : 'لم تكتمل عملية الدفع. تحقق من وسيلة الدفع وحاول مرة أخرى.',
       );
-    } finally { setBusy(false); }
+    } finally {
+      captureInFlightRef.current = false;
+      setBusy(false);
+    }
   };
 
   const submitManual = async () => {

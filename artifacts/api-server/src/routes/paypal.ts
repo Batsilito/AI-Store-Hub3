@@ -61,6 +61,56 @@ function errorFrom(error: unknown): PayPalApiError {
   );
 }
 
+function safePayPalDetails(payload: PayPalPayload): Array<{ issue: string | null; description: string | null }> {
+  return Array.isArray(payload.details)
+    ? payload.details.slice(0, 10).map((detail: any) => ({
+      issue: typeof detail?.issue === "string" ? detail.issue : null,
+      description: typeof detail?.description === "string" ? detail.description : null,
+    }))
+    : [];
+}
+
+function safePayPalBody(payload: PayPalPayload): PayPalPayload {
+  const purchaseUnits = Array.isArray(payload.purchase_units)
+    ? payload.purchase_units.slice(0, 10).map((unit: any) => ({
+      reference_id: typeof unit?.reference_id === "string" ? unit.reference_id : null,
+      custom_id: typeof unit?.custom_id === "string" ? unit.custom_id : null,
+      amount: unit?.amount && typeof unit.amount === "object"
+        ? {
+          currency_code: typeof unit.amount.currency_code === "string" ? unit.amount.currency_code : null,
+          value: typeof unit.amount.value === "string" ? unit.amount.value : null,
+        }
+        : null,
+      payments: unit?.payments && typeof unit.payments === "object"
+        ? {
+          captures: Array.isArray(unit.payments.captures)
+            ? unit.payments.captures.slice(0, 10).map((capture: any) => ({
+              id: typeof capture?.id === "string" ? capture.id : null,
+              status: typeof capture?.status === "string" ? capture.status : null,
+              amount: capture?.amount && typeof capture.amount === "object"
+                ? {
+                  currency_code: typeof capture.amount.currency_code === "string" ? capture.amount.currency_code : null,
+                  value: typeof capture.amount.value === "string" ? capture.amount.value : null,
+                }
+                : null,
+            }))
+            : [],
+        }
+        : null,
+    }))
+    : [];
+  return {
+    id: typeof payload.id === "string" ? payload.id : null,
+    status: typeof payload.status === "string" ? payload.status : null,
+    intent: typeof payload.intent === "string" ? payload.intent : null,
+    name: typeof payload.name === "string" ? payload.name : null,
+    message: typeof payload.message === "string" ? payload.message : null,
+    debug_id: typeof payload.debug_id === "string" ? payload.debug_id : null,
+    details: safePayPalDetails(payload),
+    purchase_units: purchaseUnits,
+  };
+}
+
 async function readPayPalResponse(req: Request, operation: string, response: globalThis.Response): Promise<{
   payload: PayPalPayload;
   paypalDebugId: string | null;
@@ -73,13 +123,15 @@ async function readPayPalResponse(req: Request, operation: string, response: glo
     payload = { message: raw.slice(0, 500) };
   }
   const paypalDebugId = response.headers.get("paypal-debug-id");
+  const safeBody = safePayPalBody(payload);
   req.log.info({
     paypalOperation: operation,
     status: response.status,
     paypalDebugId,
-    errorName: payload.name ?? null,
-    details: payload.details ?? null,
-    message: payload.message ?? null,
+    errorName: safeBody.name,
+    details: safeBody.details,
+    debug_id: safeBody.debug_id,
+    safeBody,
   }, "PayPal response");
   return { payload, paypalDebugId };
 }
@@ -152,6 +204,7 @@ router.post("/paypal/orders", async (req, res): Promise<void> => {
       throw new PayPalApiError("paypal_create_order_failed", 502, result.paypalDebugId, typeof result.payload.name === "string" ? result.payload.name : null, result.payload.details ?? null, "PayPal could not create the order");
     }
     const [claimed] = await db.update(ordersTable).set({ paypalOrderId: result.payload.id }).where(and(eq(ordersTable.id, order.id), eq(ordersTable.status, "awaiting_payment"))).returning();
+    req.log.info({ requestId, localOrderId: order.id, paypalOrderId: result.payload.id, localOrderStatus: claimed?.status ?? order.status }, "PayPal order ID saved to local order");
     res.json({ paypalOrderId: claimed?.paypalOrderId ?? result.payload.id, localOrderId: order.id });
   } catch (error) {
     const failure = errorFrom(error);
@@ -168,14 +221,17 @@ router.post("/paypal/orders/:paypalOrderId/capture", async (req, res): Promise<v
     if (!order) { structuredError(req, res, requestId, 404, "order_not_found", "Order not found"); return; }
     if (order.paypalCaptureId && ["confirmed", "fulfilled"].includes(order.status)) { res.json({ completed: true, orderId: order.id }); return; }
     if (order.status !== "awaiting_payment" || !["paypal", "paylater", "card"].includes(order.paymentMethod ?? "")) { structuredError(req, res, requestId, 409, "order_not_awaiting_payment", "Order is not awaiting PayPal payment"); return; }
-    const result = await paypal(req, requestId, "capture_order", `/v2/checkout/orders/${encodeURIComponent(id)}/capture`, { method: "POST", headers: { "PayPal-Request-Id": `keytopia-capture-${order.id}` } });
+    const capturePath = `/v2/checkout/orders/${encodeURIComponent(id)}/capture`;
+    req.log.info({ requestId, localOrderId: order.id, paypalOrderId: id, method: "POST", endpoint: capturePath }, "PayPal capture request");
+    const result = await paypal(req, requestId, "capture_order", capturePath, { method: "POST", headers: { "PayPal-Request-Id": `keytopia-capture-${order.id}` } });
     const payload = result.payload; const capture = captureFrom(payload);
     const paypalIssue = Array.isArray(payload.details)
       ? payload.details.find((detail: any) => typeof detail?.issue === "string")?.issue
       : undefined;
-    if (!result.response.ok) {
+    if (![200, 201].includes(result.response.status)) {
       const complianceFailure = paypalIssue === "COMPLIANCE_VIOLATION";
-      req.log.error({ requestId, orderId: order.id, paypalOrderId: id, paypalIssue: paypalIssue ?? null, paypalDebugId: result.paypalDebugId }, "PayPal capture was rejected");
+      const safeBody = safePayPalBody(payload);
+      req.log.error({ requestId, orderId: order.id, paypalOrderId: id, paypalIssue: paypalIssue ?? null, paypalDebugId: result.paypalDebugId, errorName: safeBody.name, details: safeBody.details, debug_id: safeBody.debug_id, safeBody }, "PayPal capture was rejected");
       structuredError(
         req,
         res,
@@ -193,10 +249,11 @@ router.post("/paypal/orders/:paypalOrderId/capture", async (req, res): Promise<v
     const integrityError = validatePayPalCapture({ localOrderId: order.id, ownerId: order.customerId, authenticatedUserId: customerId, orderStatus: order.status, paymentMethod: order.paymentMethod, expectedAmount: usdAmountFromOrder(order.total), paypalCustomId: payload.purchase_units?.[0]?.custom_id, paypalStatus: payload.status, captureStatus: capture?.status, currency: amount?.currency_code, paidAmount: amount?.value, existingCaptureId: order.paypalCaptureId, captureId: capture?.id });
     if (integrityError) {
       req.log.error({ requestId, orderId: order.id, paypalOrderId: id, integrityError, paypalDebugId: result.paypalDebugId }, "PayPal payment integrity check failed");
-      structuredError(req, res, requestId, result.response.ok ? 409 : 502, result.response.ok ? "paypal_payment_verification_failed" : "paypal_capture_failed", result.response.ok ? "Payment verification failed" : "PayPal could not complete the payment", result.paypalDebugId);
+       structuredError(req, res, requestId, result.response.status === 200 || result.response.status === 201 ? 409 : 502, result.response.status === 200 || result.response.status === 201 ? "paypal_payment_verification_failed" : "paypal_capture_failed", result.response.status === 200 || result.response.status === 201 ? "Payment verification failed" : "PayPal could not complete the payment", result.paypalDebugId);
       return;
     }
-    await confirmOrder(order.id, { paypalOrderId: id, captureId: capture.id, amount: amount.value, paidAt: new Date(capture.create_time ?? Date.now()) });
+    const completed = await confirmOrder(order.id, { paypalOrderId: id, captureId: capture.id, amount: amount.value, paidAt: new Date(capture.create_time ?? Date.now()) });
+    req.log.info({ requestId, localOrderId: order.id, paypalOrderId: id, paypalCaptureId: capture.id, paypalStatus: payload.status, captureStatus: capture.status, localOrderStatus: completed?.order?.status ?? null }, "PayPal local order update completed");
     res.json({ completed: true, orderId: order.id });
   } catch (error) {
     const failure = errorFrom(error);
