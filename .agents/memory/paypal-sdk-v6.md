@@ -15,11 +15,11 @@ For standalone guest-card checkout, pass the actual `<paypal-basic-card-button>`
 
 **How to apply:** Create and append the basic-card button first, then call `start({ presentationMode: "auto", targetElement: basicCardButton }, createOrder())`.
 
-Guest-card `auto` presentation can render PayPal’s hosted form inline with PayPal-controlled language, address fields, country defaults, and layout; use `modal` when the inline fallback does not fit the storefront UI.
+Guest-card `auto` presentation renders PayPal’s hosted form inline with PayPal-controlled language, address fields, country defaults, and layout; the current PayPal environment rejects `modal` for this flow.
 
-**Why:** The merchant cannot fully style or localize PayPal’s hosted guest-card form, and its inline layout can appear visually compressed inside an RTL checkout.
+**Why:** The merchant cannot fully style or localize PayPal’s hosted guest-card form, and presentation-mode support varies by PayPal integration/environment.
 
-**How to apply:** Keep the required `targetElement`, but start the guest-card session with `presentationMode: "modal"` when advanced inline card fields are not eligible.
+**How to apply:** Keep the required `targetElement` and use `presentationMode: "auto"` for this integration; do not switch to `modal` unless the active PayPal environment explicitly supports it.
 
 The preview workflow and published deployment are separate runtimes. Production PayPal routes and diagnostics do not change until the updated project is published; verify preview routes locally before asking the owner to publish.
 

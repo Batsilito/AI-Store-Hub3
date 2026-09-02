@@ -22,7 +22,7 @@ type PayPalEligibility = {
   isEligible: (method: PayPalPaymentMethod) => boolean;
 };
 type PayPalPaymentSession = {
-  start: (options: { presentationMode: 'auto' | 'modal'; targetElement?: HTMLElement }, order: Promise<PayPalOrder>) => Promise<void>;
+  start: (options: { presentationMode: 'auto'; targetElement?: HTMLElement }, order: Promise<PayPalOrder>) => Promise<void>;
 };
 type PayPalErrorPayload = {
   code?: string;
@@ -216,7 +216,7 @@ function PayPalCheckout({ method, cardMode, sdk, createOrder, cardholderName, on
       }
 
       const startGuestCard = () => {
-        void guestSession.start({ presentationMode: 'modal', targetElement: basicCardButton }, createOrder()).catch((error) => {
+        void guestSession.start({ presentationMode: 'auto', targetElement: basicCardButton }, createOrder()).catch((error) => {
           reportPayPalError(error, 'Guest card session error');
           if (active) onError(checkoutErrorMessage(error, isRtl, isRtl ? 'تعذر بدء الدفع بالبطاقة. حاول مرة أخرى.' : 'Card payment could not start. Please try again.'));
         });
