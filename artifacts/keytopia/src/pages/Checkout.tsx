@@ -27,6 +27,7 @@ type PayPalSessionCallbacks = {
   onApprove: (data: { orderId: string }) => Promise<void>;
   onCancel?: (data?: { orderId?: string }) => void;
   onError?: (error: unknown) => void;
+  onComplete?: (data?: unknown) => void;
 };
 type PayPalPaymentSession = {
   start: (options: { presentationMode: 'auto'; targetElement?: HTMLElement }, order: Promise<PayPalOrder>) => Promise<void>;
@@ -59,6 +60,34 @@ function errorPayload(value: unknown): PayPalErrorPayload {
   };
 }
 
+function safePayPalDiagnostic(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object') return { value: typeof value === 'string' ? value : null };
+  const raw = value as Record<string, unknown>;
+  const details = Array.isArray(raw.details)
+    ? raw.details.slice(0, 10).map(detail => {
+      if (!detail || typeof detail !== 'object') return null;
+      const item = detail as Record<string, unknown>;
+      return {
+        issue: typeof item.issue === 'string' ? item.issue : null,
+        description: typeof item.description === 'string' ? item.description : null,
+      };
+    }).filter(Boolean)
+    : [];
+  return {
+    name: typeof raw.name === 'string' ? raw.name : null,
+    code: typeof raw.code === 'string' ? raw.code : null,
+    message: typeof raw.message === 'string' ? raw.message : null,
+    orderId: typeof raw.orderId === 'string' ? raw.orderId : null,
+    debug_id: typeof raw.debug_id === 'string' ? raw.debug_id : typeof raw.paypalDebugId === 'string' ? raw.paypalDebugId : null,
+    details,
+  };
+}
+
+function reportPayPalDiagnostic(event: string, value: unknown): void {
+  if (!import.meta.env.DEV) return;
+  console.info(`[PayPal v6] ${event}`, safePayPalDiagnostic(value));
+}
+
 function checkoutErrorMessage(error: unknown, isRtl: boolean, fallback: string): string {
   const rawError = error as { data?: unknown; message?: unknown } | null;
   const data = rawError?.data;
@@ -83,17 +112,10 @@ function checkoutErrorMessage(error: unknown, isRtl: boolean, fallback: string):
 
 function reportPayPalError(error: unknown, context: string): void {
   if (!import.meta.env.DEV) return;
-  if (error instanceof PayPalCheckoutError) {
-    console.error(`[PayPal v6] ${context}`, {
-      code: error.payload.code,
-      message: error.payload.message,
-      paypalDebugId: error.payload.paypalDebugId,
-      requestId: error.payload.requestId,
-      httpStatus: error.httpStatus,
-    });
-    return;
-  }
-  console.error(`[PayPal v6] ${context}`, error);
+  const diagnostic = error instanceof PayPalCheckoutError
+    ? { ...safePayPalDiagnostic(error.payload), httpStatus: error.httpStatus, requestId: error.payload.requestId ?? null }
+    : safePayPalDiagnostic(error);
+  console.error(`[PayPal v6] ${context}`, diagnostic);
 }
 type PayPalCardFieldComponent = HTMLElement & { destroy?: () => void; focus?: () => void };
 type PayPalCardFieldsSession = {
@@ -151,10 +173,19 @@ function PayPalCheckout({ method, cardMode, payLaterDetails, sdk, createOrder, c
   const cardSubmitButton = useRef<HTMLButtonElement>(null);
   const autoStartedRef = useRef(false);
   const [cardReady, setCardReady] = useState(false);
+  const cardholderNameRef = useRef(cardholderName);
+  const sessionStartedRef = useRef(false);
+  const approvedRef = useRef(false);
+
+  useEffect(() => {
+    cardholderNameRef.current = cardholderName;
+  }, [cardholderName]);
 
   useEffect(() => {
     let active = true;
     setCardReady(false);
+    sessionStartedRef.current = false;
+    approvedRef.current = false;
 
     if ((method === 'paypal' || method === 'paylater') && buttonsContainer.current) {
       const button = document.createElement(method === 'paypal' ? 'paypal-button' : 'paylater-button') as HTMLElement & {
