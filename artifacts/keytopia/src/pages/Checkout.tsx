@@ -359,8 +359,11 @@ function MastercardLogo() {
 }
 
 function PaypalLogo() {
-  return <span className="inline-flex items-center gap-1.5 text-[#003087]">
-    <span className="text-2xl font-black italic leading-none text-[#0070ba]">P</span>
+  return <span className="inline-flex items-center gap-1.5 text-[#003087]" role="img" aria-label="PayPal">
+    <span className="relative inline-block h-7 w-7 shrink-0" aria-hidden="true">
+      <span className="absolute -top-1 start-1 text-[27px] font-black italic leading-none text-[#003087]">P</span>
+      <span className="absolute top-0 start-0 text-[27px] font-black italic leading-none text-[#0070ba]">P</span>
+    </span>
     <span className="text-base font-bold tracking-tight">PayPal</span>
   </span>;
 }
