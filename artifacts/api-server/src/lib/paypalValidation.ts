@@ -9,7 +9,7 @@ export type PayPalCaptureCheck = {
 export function validatePayPalCapture(input: PayPalCaptureCheck): string | null {
   if (input.authenticatedUserId !== undefined && input.ownerId !== input.authenticatedUserId) return "wrong_user";
   if (input.orderStatus !== "awaiting_payment") return input.existingCaptureId === input.captureId ? null : "wrong_status";
-  if (!["paypal", "card"].includes(input.paymentMethod ?? "")) return "wrong_method";
+  if (!["paypal", "paylater", "card"].includes(input.paymentMethod ?? "")) return "wrong_method";
   if (input.paypalCustomId !== String(input.localOrderId)) return "wrong_order";
   if (input.paypalStatus !== "COMPLETED" || input.captureStatus !== "COMPLETED") return "not_completed";
   if (input.currency !== "USD") return "wrong_currency";

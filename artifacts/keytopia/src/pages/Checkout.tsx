@@ -13,13 +13,15 @@ import Layout from '../components/Layout';
 import { useLang } from '../contexts/LanguageContext';
 import { getGetMyCashbackQueryKey, useCreateOrder, useGetMyCashback, useGetEgpUsdRate } from '@workspace/api-client-react';
 
-type PaymentMethod = 'instapay' | 'vodafone' | 'paypal' | 'card' | null;
+type PaymentMethod = 'instapay' | 'vodafone' | 'paypal' | 'paylater' | 'card' | null;
 type PayCurrency = 'EGP' | 'USD';
 
 type PayPalOrder = { orderId: string };
-type PayPalPaymentMethod = 'paypal' | 'advanced_cards' | 'card';
+type PayPalPaymentMethod = 'paypal' | 'paylater' | 'advanced_cards' | 'card';
+type PayLaterDetails = { productCode: string; countryCode: string };
 type PayPalEligibility = {
   isEligible: (method: PayPalPaymentMethod) => boolean;
+  getDetails?: (method: PayPalPaymentMethod) => PayLaterDetails | undefined;
 };
 type PayPalSessionCallbacks = {
   onApprove: (data: { orderId: string }) => Promise<void>;
@@ -110,6 +112,7 @@ type PayPalCardFieldsSession = {
 type PayPalSdk = {
   findEligibleMethods: (options: { currencyCode: string; amount: string }) => Promise<PayPalEligibility>;
   createPayPalOneTimePaymentSession: (options: PayPalSessionCallbacks) => PayPalPaymentSession;
+  createPayLaterOneTimePaymentSession?: (options: PayPalSessionCallbacks) => PayPalPaymentSession;
   createPayPalGuestOneTimePaymentSession?: (options: PayPalSessionCallbacks) => PayPalPaymentSession;
   createCardFieldsOneTimePaymentSession: () => PayPalCardFieldsSession;
 };
@@ -126,11 +129,12 @@ declare global {
   }
 }
 
-type PayPalMethod = 'paypal' | 'card';
+type PayPalMethod = 'paypal' | 'paylater' | 'card';
 
 type PayPalCheckoutProps = {
   method: PayPalMethod;
   cardMode: Exclude<PayPalPaymentMethod, 'paypal'> | null;
+  payLaterDetails: PayLaterDetails | null;
   sdk: PayPalSdk;
   createOrder: () => Promise<PayPalOrder>;
   cardholderName: string;
@@ -141,7 +145,7 @@ type PayPalCheckoutProps = {
   autoStart: boolean;
 };
 
-function PayPalCheckout({ method, cardMode, sdk, createOrder, cardholderName, onSuccess, onError, isRtl, disabled, autoStart }: PayPalCheckoutProps) {
+function PayPalCheckout({ method, cardMode, payLaterDetails, sdk, createOrder, cardholderName, onSuccess, onError, isRtl, disabled, autoStart }: PayPalCheckoutProps) {
   const buttonsContainer = useRef<HTMLDivElement>(null);
   const cardContainer = useRef<HTMLDivElement>(null);
   const cardSubmitButton = useRef<HTMLButtonElement>(null);
@@ -152,22 +156,46 @@ function PayPalCheckout({ method, cardMode, sdk, createOrder, cardholderName, on
     let active = true;
     setCardReady(false);
 
-    if (method === 'paypal' && buttonsContainer.current) {
-      const button = document.createElement('paypal-button');
-      button.setAttribute('type', 'pay');
+    if ((method === 'paypal' || method === 'paylater') && buttonsContainer.current) {
+      const button = document.createElement(method === 'paypal' ? 'paypal-button' : 'paylater-button') as HTMLElement & {
+        productCode?: string;
+        countryCode?: string;
+      };
+      if (method === 'paypal') button.setAttribute('type', 'pay');
+      if (method === 'paylater') {
+        if (!payLaterDetails) {
+          onError(isRtl ? 'الدفع عبر Pay Later غير متاح لهذا الطلب.' : 'Pay Later is not available for this order.');
+          return () => { active = false; };
+        }
+        button.productCode = payLaterDetails.productCode;
+        button.countryCode = payLaterDetails.countryCode;
+      }
       buttonsContainer.current.replaceChildren(button);
-      const session = sdk.createPayPalOneTimePaymentSession({
+      const createSession = method === 'paypal'
+        ? sdk.createPayPalOneTimePaymentSession
+        : sdk.createPayLaterOneTimePaymentSession;
+      if (!createSession) {
+        onError(isRtl ? 'الدفع عبر Pay Later غير متاح حالياً.' : 'Pay Later is currently unavailable.');
+        return () => { active = false; buttonsContainer.current?.replaceChildren(); };
+      }
+      const session = createSession({
         onApprove: ({ orderId }) => onSuccess(orderId),
-        onCancel: () => onError(isRtl ? 'تم إلغاء الدفع. يمكنك المحاولة مرة أخرى.' : 'Payment was cancelled. You can try again.'),
+        onCancel: () => onError(method === 'paylater'
+          ? (isRtl ? 'تم إلغاء الدفع بالتقسيط. يمكنك المحاولة مرة أخرى.' : 'Pay Later payment was cancelled. You can try again.')
+          : (isRtl ? 'تم إلغاء الدفع. يمكنك المحاولة مرة أخرى.' : 'Payment was cancelled. You can try again.')),
         onError: (error) => {
-          reportPayPalError(error, 'PayPal session error');
-          onError(checkoutErrorMessage(error, isRtl, isRtl ? 'PayPal غير متاح حالياً. حاول مرة أخرى لاحقاً.' : 'PayPal is currently unavailable. Please try again later.'));
+          reportPayPalError(error, method === 'paylater' ? 'Pay Later session error' : 'PayPal session error');
+          onError(checkoutErrorMessage(error, isRtl, method === 'paylater'
+            ? (isRtl ? 'تعذر بدء الدفع بالتقسيط. حاول مرة أخرى.' : 'Pay Later could not be started. Please try again.')
+            : (isRtl ? 'PayPal غير متاح حالياً. حاول مرة أخرى لاحقاً.' : 'PayPal is currently unavailable. Please try again later.')));
         },
       });
       const startPayPal = () => {
         void session.start({ presentationMode: 'auto' }, createOrder()).catch((error) => {
-          reportPayPalError(error, 'PayPal session error');
-          if (active) onError(checkoutErrorMessage(error, isRtl, isRtl ? 'PayPal غير متاح حالياً. حاول مرة أخرى لاحقاً.' : 'PayPal is currently unavailable. Please try again later.'));
+          reportPayPalError(error, method === 'paylater' ? 'Pay Later session error' : 'PayPal session error');
+          if (active) onError(checkoutErrorMessage(error, isRtl, method === 'paylater'
+            ? (isRtl ? 'تعذر بدء الدفع بالتقسيط. حاول مرة أخرى.' : 'Pay Later could not be started. Please try again.')
+            : (isRtl ? 'PayPal غير متاح حالياً. حاول مرة أخرى لاحقاً.' : 'PayPal is currently unavailable. Please try again later.')));
         });
       };
       const handleClick = () => {
@@ -299,9 +327,9 @@ function PayPalCheckout({ method, cardMode, sdk, createOrder, cardholderName, on
       fields.forEach((field) => field.destroy?.());
       container.replaceChildren();
     };
-  }, [method, cardMode, sdk, cardholderName, autoStart]);
+  }, [method, cardMode, payLaterDetails, sdk, cardholderName, autoStart]);
 
-  if (method === 'paypal') return <div className={disabled ? 'pointer-events-none opacity-60' : ''} ref={buttonsContainer} />;
+  if (method === 'paypal' || method === 'paylater') return <div className={disabled ? 'pointer-events-none opacity-60' : ''} ref={buttonsContainer} />;
   return <div className="space-y-2 rounded-xl border border-black/10 bg-white p-3 sm:p-4">
     <div ref={cardContainer} className="min-h-11 min-w-0 overflow-hidden rounded-lg border p-2" />
     {cardMode === 'advanced_cards' && (
@@ -419,13 +447,15 @@ export default function Checkout() {
   const [sdkState, setSdkState] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
   const [sdk, setSdk] = useState<PayPalSdk | null>(null);
   const [paypalEligible, setPaypalEligible] = useState(false);
+  const [payLaterEligible, setPayLaterEligible] = useState(false);
+  const [payLaterDetails, setPayLaterDetails] = useState<PayLaterDetails | null>(null);
   const [cardMode, setCardMode] = useState<Exclude<PayPalPaymentMethod, 'paypal'> | null>(null);
   const [confirmation, setConfirmation] = useState<any>(null);
   const localOrderRef = useRef<any>(null);
   const idempotencyKeyRef = useRef(sessionStorage.getItem('checkout_idempotency') || crypto.randomUUID());
   const paymentDetailsRef = useRef<HTMLDivElement>(null);
 
-  const currency: PayCurrency = method === 'paypal' || method === 'card' ? 'USD' : 'EGP';
+  const currency: PayCurrency = method === 'paypal' || method === 'paylater' || method === 'card' ? 'USD' : 'EGP';
   const subtotal = items.reduce((sum, item) => sum + (currency === 'USD' ? getItemUsdUnitPrice(item, rate) : getItemEgpUnitPrice(item, rate)) * item.quantity, 0);
   const discount = promo.status === 'valid' ? Math.round(subtotal * promo.percentage) / 100 : 0;
   const beforeCashback = Math.max(0, subtotal - discount);
@@ -447,7 +477,7 @@ export default function Checkout() {
   }, [name, email, phone, method]);
 
   useEffect(() => {
-    if (method !== 'paypal' && method !== 'card') return;
+    if (method !== 'paypal' && method !== 'paylater' && method !== 'card') return;
     paymentDetailsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [method]);
 
@@ -471,7 +501,7 @@ export default function Checkout() {
 
   const orderInput = (selected: Exclude<PaymentMethod, null>) => ({
     customerName: name.trim(), customerEmail: email.trim(), customerPhone: phone.trim(),
-    currency: selected === 'paypal' || selected === 'card' ? 'USD' as const : 'EGP' as const,
+    currency: selected === 'paypal' || selected === 'paylater' || selected === 'card' ? 'USD' as const : 'EGP' as const,
     idempotencyKey: idempotencyKeyRef.current, promoCode: promo.status === 'valid' ? promo.code : null,
     cashbackAmount: cashbackUsed || undefined, referralCode: localStorage.getItem('keytopia_referral') ?? undefined,
     paymentMethod: selected,
@@ -486,7 +516,7 @@ export default function Checkout() {
   };
 
   const createPayPalOrder = async (): Promise<PayPalOrder> => {
-    if (!method || (method !== 'paypal' && method !== 'card')) throw new Error('اختر وسيلة دفع تلقائية.');
+    if (!method || (method !== 'paypal' && method !== 'paylater' && method !== 'card')) throw new Error('اختر وسيلة دفع تلقائية.');
     setBusy(true); setError('');
     try {
       const order = await createLocalOrder(method);
@@ -498,7 +528,7 @@ export default function Checkout() {
   };
 
   const whatsappUrl = (order: any, automatic: boolean) => {
-    const methodName = method === 'paypal' ? 'PayPal' : method === 'card' ? 'بطاقة ائتمان أو خصم' : method === 'instapay' ? 'InstaPay' : 'Vodafone Cash';
+    const methodName = method === 'paypal' ? 'PayPal' : method === 'paylater' ? 'PayPal Pay Later' : method === 'card' ? 'بطاقة ائتمان أو خصم' : method === 'instapay' ? 'InstaPay' : 'Vodafone Cash';
     const lines = order.items.map((item: any) => `• ${item.productName} (${item.duration}) ×${item.quantity}`).join('\n');
     const note = automatic
       ? `تم الدفع تلقائياً باستخدام ${methodName} ولا يلزم إرسال إثبات دفع.`
@@ -546,7 +576,10 @@ export default function Checkout() {
   };
 
   useEffect(() => {
-    if (method !== 'paypal' && method !== 'card') { setSdkState('idle'); return; }
+    if (method !== 'paypal' && method !== 'paylater' && method !== 'card') {
+      setSdkState('idle'); setSdk(null); setPaypalEligible(false); setPayLaterEligible(false); setPayLaterDetails(null); setCardMode(null);
+      return;
+    }
     let active = true;
     setSdkState('loading'); setError('');
     (async () => {
@@ -563,8 +596,15 @@ export default function Checkout() {
       const instance = await window.paypal.createInstance({ clientId: config.clientId, components: ['paypal-payments', 'card-fields', 'paypal-guest-payments'], pageType: 'checkout' });
       const eligible = await instance.findEligibleMethods({ currencyCode: 'USD', amount: total.toFixed(2) });
       if (!active) return;
-      setSdk(instance); setPaypalEligible(eligible.isEligible('paypal'));
+       const eligibleForPayLater = eligible.isEligible('paylater');
+       setSdk(instance); setPaypalEligible(eligible.isEligible('paypal')); setPayLaterEligible(eligibleForPayLater);
+       setPayLaterDetails(eligibleForPayLater ? eligible.getDetails?.('paylater') ?? null : null);
       setCardMode(eligible.isEligible('advanced_cards') ? 'advanced_cards' : eligible.isEligible('card') ? 'card' : null);
+       if (method === 'paylater' && !eligibleForPayLater) {
+         sessionStorage.removeItem('checkout_method');
+         setMethod(null);
+         return;
+       }
       setSdkState('ready');
     })().catch(() => { if (active) setSdkState('unavailable'); });
     return () => { active = false; };
@@ -573,8 +613,8 @@ export default function Checkout() {
   const selectMethod = (next: Exclude<PaymentMethod, null>) => {
     if (busy) return;
     if (method !== next) { localOrderRef.current = null; idempotencyKeyRef.current = crypto.randomUUID(); sessionStorage.setItem('checkout_idempotency', idempotencyKeyRef.current); }
-    if (next === 'paypal' || next === 'card') setPaymentLaunchNonce(current => current + 1);
-    setAutoLaunchPayment(next === 'paypal' || next === 'card');
+     if (next === 'paypal' || next === 'paylater' || next === 'card') setPaymentLaunchNonce(current => current + 1);
+     setAutoLaunchPayment(next === 'paypal' || next === 'paylater' || next === 'card');
     setMethod(next); setCashbackUsed(0); setCashbackInput(''); setError('');
   };
 
@@ -598,25 +638,28 @@ export default function Checkout() {
     { id: 'instapay' as const, title: 'InstaPay', description: 'تحويل فوري آمن عبر تطبيق InstaPay', icon: <InstapayLogo />, currency: 'EGP' },
     { id: 'vodafone' as const, title: 'Vodafone Cash', description: 'تحويل إلى محفظة فودافون كاش', icon: <VodafoneCashLogo />, currency: 'EGP' },
     { id: 'paypal' as const, title: 'PayPal', description: 'الدفع من رصيدك أو حسابك على PayPal', icon: <PaypalLogo />, currency: 'USD' },
+    { id: 'paylater' as const, title: 'PayPal Pay Later', description: 'الدفع على دفعات عبر PayPal عند توفر الأهلية', icon: <PaypalLogo />, currency: 'USD' },
     { id: 'card' as const, title: 'بطاقة ائتمان أو خصم', description: 'Visa أو Mastercard عبر بوابة PayPal الآمنة', icon: <div className="flex gap-1"><VisaLogo/><MastercardLogo/></div>, currency: 'USD' },
   ];
-  const cta = method === 'paypal' ? 'الدفع باستخدام PayPal' : method === 'card' ? 'الدفع بالبطاقة' : method === 'instapay' ? 'المتابعة إلى InstaPay' : method === 'vodafone' ? 'عرض بيانات Vodafone Cash' : 'اختر وسيلة الدفع';
-  const automaticPaymentPanel = (method === 'paypal' || method === 'card') ? (
+  const cta = method === 'paypal' ? 'الدفع باستخدام PayPal' : method === 'paylater' ? 'الدفع بالتقسيط عبر PayPal' : method === 'card' ? 'الدفع بالبطاقة' : method === 'instapay' ? 'المتابعة إلى InstaPay' : method === 'vodafone' ? 'عرض بيانات Vodafone Cash' : 'اختر وسيلة الدفع';
+  const automaticPaymentPanel = (method === 'paypal' || method === 'paylater' || method === 'card') ? (
     <div ref={paymentDetailsRef} className="mt-5 scroll-mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
       <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-slate-600">
         <ShieldCheck className="h-4 w-4 text-emerald-600" />
         بيانات الدفع مشفرة وتُعالج بأمان عبر PayPal
       </div>
       {method === 'paypal' && <p className="mb-3 text-sm text-slate-600">سيتم فتح نافذة PayPal لتسجيل الدخول وإتمام الدفع بأمان.</p>}
+      {method === 'paylater' && <p className="mb-3 text-sm text-slate-600">سيعرض PayPal خيارات الدفع على دفعات إذا كنت مؤهلاً لها.</p>}
       {method === 'card' && <p className="mb-3 text-sm text-slate-600">{cardMode === 'advanced_cards' ? 'أدخل بيانات بطاقة Visa أو Mastercard مباشرة في الحقول الآمنة أدناه.' : 'سيتم فتح نافذة PayPal الآمنة لإدخال بيانات بطاقة Visa أو Mastercard.'}</p>}
       {sdkState === 'loading' && <div className="flex min-h-14 items-center justify-center gap-2"><Loader2 className="h-5 w-5 animate-spin" />جار تجهيز الدفع الآمن…</div>}
       {sdkState === 'unavailable' && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">وسيلة الدفع غير متاحة حالياً. جرّب وسيلة أخرى أو حاول لاحقاً.</p>}
       {!customerFieldsReady && <button type="button" onClick={validCustomer} className="min-h-12 w-full rounded-xl bg-slate-900 px-4 font-bold text-white">{cta}</button>}
-      {sdkState === 'ready' && ((method === 'paypal' && paypalEligible) || (method === 'card' && cardMode)) && sdk && customerFieldsReady && (
+       {sdkState === 'ready' && ((method === 'paypal' && paypalEligible) || (method === 'paylater' && payLaterEligible && payLaterDetails) || (method === 'card' && cardMode)) && sdk && customerFieldsReady && (
         <PayPalCheckout
           key={`${method}-${paymentLaunchNonce}`}
           method={method}
           cardMode={cardMode}
+           payLaterDetails={payLaterDetails}
           sdk={sdk}
           createOrder={createPayPalOrder}
           cardholderName={name}
@@ -639,9 +682,9 @@ export default function Checkout() {
             <div className="mt-6 grid gap-4 sm:grid-cols-2"><label className="sm:col-span-2 text-sm font-bold">الاسم الكامل<input value={name} onChange={e=>setName(e.target.value)} autoComplete="name" className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 outline-none focus:border-primary focus:ring-2 focus:ring-blue-100" placeholder="اكتب اسمك الكامل"/></label><label className="text-sm font-bold">البريد الإلكتروني<input type="email" value={email} onChange={e=>setEmail(e.target.value)} autoComplete="email" className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 outline-none focus:border-primary focus:ring-2 focus:ring-blue-100" placeholder="name@example.com" dir="ltr"/></label><label className="text-sm font-bold">رقم الهاتف<input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} autoComplete="tel" className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 outline-none focus:border-primary focus:ring-2 focus:ring-blue-100" placeholder="01xxxxxxxxx" dir="ltr"/></label></div>
           </div>
           <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7"><div className="flex items-center gap-3"><div className="grid h-10 w-10 place-items-center rounded-xl bg-blue-50 text-primary"><Wallet className="h-5 w-5"/></div><div><h2 className="text-xl font-bold">وسيلة الدفع</h2><p className="text-sm text-slate-500">اختر الطريقة المناسبة لك</p></div></div>
-             {[{label:'الدفع بالجنيه المصري', ids:['instapay','vodafone']}, {label:'الدفع بالدولار',ids:['paypal','card']}].map(group=><fieldset key={group.label} className="mt-6"><legend className="mb-3 flex w-full items-center gap-2 text-sm font-bold text-slate-700"><Banknote className="h-4 w-4 text-primary"/>{group.label}</legend><div role="radiogroup" aria-label={group.label} className="grid gap-3 sm:grid-cols-2">{methods.filter(m=>group.ids.includes(m.id)).map(m=><button key={m.id} type="button" role="radio" aria-checked={method===m.id} onClick={()=>selectMethod(m.id)} className={`relative flex min-h-[104px] w-full cursor-pointer items-center gap-3 rounded-2xl border-2 p-4 text-right transition focus:outline-none focus:ring-2 focus:ring-primary ${method===m.id?'border-primary bg-blue-50/60 shadow-sm':'border-slate-200 hover:border-slate-300'}`}><span className="min-w-0 flex-1"><span className="flex items-center justify-between gap-2">{m.icon}<span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold" dir="ltr">{m.currency}</span></span><span className="mt-2 block text-xs text-slate-500">{m.description}</span></span><span aria-hidden="true" className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border-2 ${method===m.id?'border-primary':'border-slate-400'}`}>{method===m.id&&<span className="h-2.5 w-2.5 rounded-full bg-primary"/>}</span></button>)}</div></fieldset>)}
+              {[{label:'الدفع بالجنيه المصري', ids:['instapay','vodafone']}, {label:'الدفع بالدولار',ids:['paypal','paylater','card']}].map(group=><fieldset key={group.label} className="mt-6"><legend className="mb-3 flex w-full items-center gap-2 text-sm font-bold text-slate-700"><Banknote className="h-4 w-4 text-primary"/>{group.label}</legend><div role="radiogroup" aria-label={group.label} className="grid gap-3 sm:grid-cols-2">{methods.filter(m=>group.ids.includes(m.id) && (m.id !== 'paylater' || payLaterEligible)).map(m=><button key={m.id} type="button" role="radio" aria-checked={method===m.id} onClick={()=>selectMethod(m.id)} className={`relative flex min-h-[104px] w-full cursor-pointer items-center gap-3 rounded-2xl border-2 p-4 text-right transition focus:outline-none focus:ring-2 focus:ring-primary ${method===m.id?'border-primary bg-blue-50/60 shadow-sm':'border-slate-200 hover:border-slate-300'}`}><span className="min-w-0 flex-1"><span className="flex items-center justify-between gap-2">{m.icon}<span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold" dir="ltr">{m.currency}</span></span><span className="mt-2 block text-xs text-slate-500">{m.description}</span></span><span aria-hidden="true" className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border-2 ${method===m.id?'border-primary':'border-slate-400'}`}>{method===m.id&&<span className="h-2.5 w-2.5 rounded-full bg-primary"/>}</span></button>)}</div></fieldset>)}
             {error&&<p role="alert" className="mt-4 flex gap-2 rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700"><AlertCircle className="h-5 w-5 shrink-0"/>{error}</p>}
-            {method!=='paypal'&&method!=='card'&&<button onClick={submitManual} disabled={!method||busy} className="mt-6 flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl bg-primary px-5 text-base font-bold text-white shadow-lg shadow-blue-200 disabled:cursor-not-allowed disabled:opacity-50">{busy&&<Loader2 className="h-5 w-5 animate-spin"/>}{cta}</button>}
+             {method!=='paypal'&&method!=='paylater'&&method!=='card'&&<button onClick={submitManual} disabled={!method||busy} className="mt-6 flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl bg-primary px-5 text-base font-bold text-white shadow-lg shadow-blue-200 disabled:cursor-not-allowed disabled:opacity-50">{busy&&<Loader2 className="h-5 w-5 animate-spin"/>}{cta}</button>}
           </div>
         </section>
         <aside className="order-1 lg:sticky lg:top-24 lg:order-2"><div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm"><div className="border-b border-slate-100 p-5 sm:p-6"><div className="flex items-center justify-between"><div><h2 className="text-lg font-bold">ملخص الطلب</h2><p className="mt-1 text-xs text-slate-500">{productCount} {productCount===1?'منتج':'منتجات'}</p></div><ShoppingBag className="h-6 w-6 text-primary"/></div></div><div className="max-h-64 space-y-4 overflow-y-auto p-5 lg:max-h-[42vh]">{items.map(item=>{const unit=currency==='USD'?getItemUsdUnitPrice(item,rate):getItemEgpUnitPrice(item,rate); return <div key={`${item.id}-${item.selectedDuration}`} className="flex gap-3"><div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-slate-100">{item.coverImageUrl?<img src={item.coverImageUrl} alt="" className="h-full w-full object-cover"/>:<span className="grid h-full place-items-center font-bold text-slate-400">{item.name[0]}</span>}<span className="absolute -left-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-slate-800 px-1 text-[10px] text-white">{item.quantity}</span></div><div className="min-w-0 flex-1"><h3 className="truncate text-sm font-bold">{item.name}</h3><p className="mt-0.5 text-xs text-slate-500">{item.selectedDuration}</p>{item.description&&<p className="mt-1 line-clamp-1 text-[11px] text-slate-400">{item.description}</p>}</div><strong className="shrink-0 text-sm" dir="ltr">{(unit*item.quantity).toFixed(2)} {currency}</strong></div>})}</div>

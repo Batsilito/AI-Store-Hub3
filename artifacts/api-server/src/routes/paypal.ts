@@ -132,7 +132,7 @@ router.post("/paypal/orders", async (req, res): Promise<void> => {
   if (!customerId) { structuredError(req, res, requestId, 401, "authentication_required", "Sign in is required"); return; }
   try {
     const [order] = await db.select().from(ordersTable).where(and(eq(ordersTable.id, localOrderId), eq(ordersTable.customerId, customerId))).limit(1);
-    if (!order || order.status !== "awaiting_payment" || !["paypal", "card"].includes(order.paymentMethod ?? "") || order.currency !== "USD") {
+    if (!order || order.status !== "awaiting_payment" || !["paypal", "paylater", "card"].includes(order.paymentMethod ?? "") || order.currency !== "USD") {
       structuredError(req, res, requestId, 409, "order_not_eligible", "Order is not eligible for PayPal");
       return;
     }
@@ -167,7 +167,7 @@ router.post("/paypal/orders/:paypalOrderId/capture", async (req, res): Promise<v
     const [order] = await db.select().from(ordersTable).where(and(eq(ordersTable.paypalOrderId, id), eq(ordersTable.customerId, customerId))).limit(1);
     if (!order) { structuredError(req, res, requestId, 404, "order_not_found", "Order not found"); return; }
     if (order.paypalCaptureId && ["confirmed", "fulfilled"].includes(order.status)) { res.json({ completed: true, orderId: order.id }); return; }
-    if (order.status !== "awaiting_payment" || !["paypal", "card"].includes(order.paymentMethod ?? "")) { structuredError(req, res, requestId, 409, "order_not_awaiting_payment", "Order is not awaiting PayPal payment"); return; }
+    if (order.status !== "awaiting_payment" || !["paypal", "paylater", "card"].includes(order.paymentMethod ?? "")) { structuredError(req, res, requestId, 409, "order_not_awaiting_payment", "Order is not awaiting PayPal payment"); return; }
     const result = await paypal(req, requestId, "capture_order", `/v2/checkout/orders/${encodeURIComponent(id)}/capture`, { method: "POST", headers: { "PayPal-Request-Id": `keytopia-capture-${order.id}` } });
     const payload = result.payload; const capture = captureFrom(payload);
     const paypalIssue = Array.isArray(payload.details)

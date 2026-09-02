@@ -272,7 +272,7 @@ router.post("/orders", async (req, res): Promise<void> => {
   }
 
   const data = parsed.data;
-  if ((data.currency === "USD" && !["paypal", "card"].includes(data.paymentMethod ?? "")) || (data.currency === "EGP" && !["instapay", "vodafone"].includes(data.paymentMethod ?? ""))) {
+  if ((data.currency === "USD" && !["paypal", "paylater", "card"].includes(data.paymentMethod ?? "")) || (data.currency === "EGP" && !["instapay", "vodafone"].includes(data.paymentMethod ?? ""))) {
     req.log.warn({
       currency: data.currency,
       paymentMethod: data.paymentMethod,

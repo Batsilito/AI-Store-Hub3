@@ -5,6 +5,7 @@ import { validatePayPalCapture, type PayPalCaptureCheck } from "./paypalValidati
 const valid: PayPalCaptureCheck = { localOrderId: 42, ownerId: "user_1", authenticatedUserId: "user_1", orderStatus: "awaiting_payment", paymentMethod: "paypal", expectedAmount: "9.60", paypalCustomId: "42", paypalStatus: "COMPLETED", captureStatus: "COMPLETED", currency: "USD", paidAmount: "9.60", captureId: "CAP-1" };
 test("accepts a completed matching capture", () => assert.equal(validatePayPalCapture(valid), null));
 test("accepts PayPal-hosted card captures", () => assert.equal(validatePayPalCapture({ ...valid, paymentMethod: "card" }), null));
+test("accepts Pay Later captures", () => assert.equal(validatePayPalCapture({ ...valid, paymentMethod: "paylater" }), null));
 test("rejects amount mismatch", () => assert.equal(validatePayPalCapture({ ...valid, paidAmount: "9.61" }), "amount_mismatch"));
 test("rejects the wrong Clerk user", () => assert.equal(validatePayPalCapture({ ...valid, authenticatedUserId: "user_2" }), "wrong_user"));
 test("rejects a capture reused for another transaction", () => assert.equal(validatePayPalCapture({ ...valid, existingCaptureId: "CAP-OTHER" }), "duplicate_capture"));

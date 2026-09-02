@@ -44,3 +44,9 @@ Checkout order validation should normalize selected duration labels before compa
 **Why:** Existing cart entries can retain harmless whitespace differences from product records, and rejecting the whole order makes every payment method appear broken.
 
 **How to apply:** Normalize duration text for server-side price lookup while still requiring the product to be published and in stock.
+
+Pay Later requires a separate v6 eligibility/session path: check `paylater`, read its `productCode` and `countryCode`, configure PayPal's official `paylater-button`, and capture the resulting order server-side. Hide it when PayPal reports the buyer, merchant, currency, or amount is ineligible.
+
+**Why:** Pay Later offers are restricted by market and transaction context; showing a handmade installment promise or bypassing eligibility would violate PayPal's integration and messaging requirements.
+
+**How to apply:** Treat Pay Later as an optional USD payment method backed by the same server-side order and capture validation as PayPal Checkout, without assuming Egypt-based merchants or buyers qualify.

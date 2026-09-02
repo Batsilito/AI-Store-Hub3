@@ -1,0 +1,59 @@
+
+
+## Pay Later [#pay-later]
+
+Add Pay Later to a PayPal Checkout so customers can buy now and pay over time - while merchants get paid right away. Pay Later includes Buy Now Pay Later options like Pay in 4 and PayPal Credit.
+
+[Integrate Pay Later →](/pay-later/overview/)
+
+***
+
+## Checkout essentials [#checkout-essentials]
+
+### [Accept PayPal](/checkout/)
+
+Add PayPal payments to a digital store so customers can pay using any funding source linked to their PayPal account.
+
+### [Venmo](/venmo/)
+
+Add Venmo to a digital store to accept Venmo payments for any US-based merchants and US-based consumers only.
+
+### [Links and buttons](/payment-links-buttons/overview/)
+
+Skip the integration and use payment links and buttons to accept PayPal payments anywhere.
+
+### [Offer Pay Later](/pay-later/overview/)
+
+Add Pay Later to a PayPal Checkout so a merchant can get paid right away while a customer can pay over time.
+
+### [Apple Pay](/apple-pay/integrate/)
+
+Add Apple Pay to accept secure, one-tap payments on customers' iOS devices or a Safari web browser.
+
+### [Google Pay](/google-pay/integrate/)
+
+Add Google Pay to accept fast and secure payments in a streamlined checkout experience.
+
+### [Accept in-person payments](https://www.paypal.com/business/pos-system)
+
+Choose from 3 point-of-sale systems to accept payments in a physical location, by connecting a terminal to PayPal's servers.
+
+### [Accept donations](/sdk/donate/)
+
+Add the PayPal Donate button to keep customers within a digital experience and not redirect them to a donation page elsewhere.
+
+***
+
+## Expanded Checkout options [#expanded-checkout-options]
+
+{/* <Card title="Cards" href="/accept-debit-credit-cards/">
+    Provide more versatility in a payment flow by adding the ability to accept credit and debit card payments with Expanded Checkout.
+  </Card> */}
+
+### [Fastlane](/fastlane/enable/)
+
+Add Fastlane by PayPal to allow returning customers to re-authenticate and pay quickly using saved payment methods and shipping addresses.
+
+{/* <Card title="Save payment methods" href="/save-payment-methods/">
+    Add customer information vaulting capabilities to a digital store by integrating Save PayPal, Venmo, Cards or tokens.
+  </Card> */}
