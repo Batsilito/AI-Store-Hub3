@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { validatePayPalCapture, type PayPalCaptureCheck } from "./paypalValidation.ts";
+import { isSuccessfulPayPalCaptureStatus, validatePayPalCapture, type PayPalCaptureCheck } from "./paypalValidation.ts";
 
 const valid: PayPalCaptureCheck = { localOrderId: 42, ownerId: "user_1", authenticatedUserId: "user_1", orderStatus: "awaiting_payment", paymentMethod: "paypal", expectedAmount: "9.60", paypalCustomId: "42", paypalStatus: "COMPLETED", captureStatus: "COMPLETED", currency: "USD", paidAmount: "9.60", captureId: "CAP-1" };
+test("accepts PayPal capture HTTP 200 responses", () => assert.equal(isSuccessfulPayPalCaptureStatus(200), true));
+test("accepts PayPal capture HTTP 201 responses", () => assert.equal(isSuccessfulPayPalCaptureStatus(201), true));
+test("rejects non-successful PayPal capture responses", () => assert.equal(isSuccessfulPayPalCaptureStatus(202), false));
 test("accepts a completed matching capture", () => assert.equal(validatePayPalCapture(valid), null));
 test("accepts PayPal-hosted card captures", () => assert.equal(validatePayPalCapture({ ...valid, paymentMethod: "card" }), null));
 test("accepts Pay Later captures", () => assert.equal(validatePayPalCapture({ ...valid, paymentMethod: "paylater" }), null));

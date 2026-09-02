@@ -5,6 +5,10 @@ export type PayPalCaptureCheck = {
   currency?: string; paidAmount?: string; existingCaptureId?: string | null; captureId?: string;
 };
 
+export function isSuccessfulPayPalCaptureStatus(status: number): boolean {
+  return status === 200 || status === 201;
+}
+
 /** Pure integrity gate kept separate so every negative case is regression tested. */
 export function validatePayPalCapture(input: PayPalCaptureCheck): string | null {
   if (input.authenticatedUserId !== undefined && input.ownerId !== input.authenticatedUserId) return "wrong_user";
