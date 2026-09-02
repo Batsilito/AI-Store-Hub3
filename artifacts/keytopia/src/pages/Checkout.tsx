@@ -660,8 +660,13 @@ export default function Checkout() {
       {method === 'paypal' && <p className="mb-3 text-sm text-slate-600">سيتم فتح نافذة PayPal لتسجيل الدخول وإتمام الدفع بأمان.</p>}
       {method === 'paylater' && <p className="mb-3 text-sm text-slate-600">سيعرض PayPal خيارات الدفع على دفعات إذا كنت مؤهلاً لها.</p>}
       {method === 'card' && <p className="mb-3 text-sm text-slate-600">{cardMode === 'advanced_cards' ? 'أدخل بيانات بطاقة Visa أو Mastercard مباشرة في الحقول الآمنة أدناه.' : 'سيتم فتح نافذة PayPal الآمنة لإدخال بيانات بطاقة Visa أو Mastercard.'}</p>}
+       {method === 'card' && <p className="mb-3 text-xs leading-6 text-slate-500">
+         عند الدفع بالبطاقة، فإنك تقر بأن بياناتك ستُعالج بواسطة PayPal وفقاً لـ <a className="font-semibold text-primary underline" href="https://www.paypal.com/webapps/mpp/ua/privacy-full" target="_blank" rel="noreferrer">بيان خصوصية PayPal</a>.
+         By paying with your card, you acknowledge that your data will be processed by PayPal subject to the <a className="font-semibold text-primary underline" href="https://www.paypal.com/webapps/mpp/ua/privacy-full" target="_blank" rel="noreferrer">PayPal Privacy Statement</a>.
+       </p>}
       {sdkState === 'loading' && <div className="flex min-h-14 items-center justify-center gap-2"><Loader2 className="h-5 w-5 animate-spin" />جار تجهيز الدفع الآمن…</div>}
       {sdkState === 'unavailable' && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">وسيلة الدفع غير متاحة حالياً. جرّب وسيلة أخرى أو حاول لاحقاً.</p>}
+       {sdkState === 'ready' && method === 'card' && !cardMode && <p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">الدفع بالبطاقات غير متاح لهذا التاجر أو بهذه العملة عبر PayPal حالياً. جرّب PayPal أو وسيلة دفع أخرى.</p>}
       {!customerFieldsReady && <button type="button" onClick={validCustomer} className="min-h-12 w-full rounded-xl bg-slate-900 px-4 font-bold text-white">{cta}</button>}
        {sdkState === 'ready' && ((method === 'paypal' && paypalEligible) || (method === 'paylater' && payLaterEligible && payLaterDetails) || (method === 'card' && cardMode)) && sdk && customerFieldsReady && (
         <PayPalCheckout

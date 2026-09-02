@@ -56,3 +56,9 @@ PayPal v6 `paymentSession.start()` resolving only means the hosted flow has retu
 **Why:** The hosted popup can close after review without completing a transaction, and treating `start()` resolution as success can confirm unpaid local orders.
 
 **How to apply:** Keep the session promise and approval callback separate, log both during Sandbox debugging, and require a completed server-side capture before changing the local order to paid.
+
+PayPal customized card fields are eligibility-gated by the merchant/buyer country and currency; Egypt is not listed in the supplied expanded-card country table.
+
+**Why:** Forcing the `advanced_cards` component outside PayPal's eligible regions can produce an empty or unusable card option even when PayPal account checkout works.
+
+**How to apply:** Use `findEligibleMethods` before rendering custom fields, show the PayPal-hosted card path only when PayPal reports it eligible, and explain when neither card path is available.
