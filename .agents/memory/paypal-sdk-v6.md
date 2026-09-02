@@ -20,3 +20,9 @@ The canonical Neon order table must contain the PayPal order/capture columns bef
 **Why:** PayPal and card checkout both depend on the same local order creation endpoint, so a missing nullable payment column breaks both methods even when SDK eligibility succeeds.
 
 **How to apply:** Keep the additive PayPal schema migration applied to the canonical development database, then publish through the normal production schema process without replacing or resetting existing order data.
+
+Checkout order validation should normalize selected duration labels before comparing them with stored product pricing options.
+
+**Why:** Existing cart entries can retain harmless whitespace differences from product records, and rejecting the whole order makes every payment method appear broken.
+
+**How to apply:** Normalize duration text for server-side price lookup while still requiring the product to be published and in stock.

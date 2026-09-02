@@ -52,6 +52,28 @@ function errorPayload(value: unknown): PayPalErrorPayload {
   };
 }
 
+function checkoutErrorMessage(error: unknown, isRtl: boolean, fallback: string): string {
+  const rawError = error as { data?: unknown; message?: unknown } | null;
+  const data = rawError?.data;
+  const serverMessage = data && typeof data === 'object' && typeof (data as Record<string, unknown>).error === 'string'
+    ? (data as Record<string, string>).error
+    : typeof rawError?.message === 'string' ? rawError.message : '';
+
+  if (serverMessage.includes('selected products or durations')) {
+    return isRtl
+      ? 'أحد المنتجات أو المدد المختارة لم يعد متاحاً بهذه العملة. ارجع إلى السلة وحدّث الأسعار ثم حاول مرة أخرى.'
+      : 'One of the selected products or durations is no longer available in this currency. Refresh your cart and try again.';
+  }
+  if (serverMessage.includes('Payment method is not valid')) {
+    return isRtl ? 'طريقة الدفع هذه غير متوافقة مع العملة المختارة.' : 'This payment method is not compatible with the selected currency.';
+  }
+  if (serverMessage.includes('Cashback redemption')) {
+    return isRtl ? 'تعذر استخدام الكاش باك بهذه القيمة. حدّث الرصيد وحاول مرة أخرى.' : 'This cashback amount could not be applied. Refresh your balance and try again.';
+  }
+  if (serverMessage && !serverMessage.startsWith('HTTP ')) return serverMessage;
+  return fallback;
+}
+
 function reportPayPalError(error: unknown, context: string): void {
   if (!import.meta.env.DEV) return;
   if (error instanceof PayPalCheckoutError) {
@@ -144,7 +166,7 @@ function PayPalCheckout({ method, cardMode, sdk, createOrder, cardholderName, on
       const handleClick = () => {
         void session.start({ presentationMode: 'auto' }, createOrder()).catch((error) => {
           reportPayPalError(error, 'PayPal session error');
-          if (active) onError(isRtl ? 'PayPal غير متاح حالياً. حاول مرة أخرى لاحقاً.' : 'PayPal is currently unavailable. Please try again later.');
+          if (active) onError(checkoutErrorMessage(error, isRtl, isRtl ? 'PayPal غير متاح حالياً. حاول مرة أخرى لاحقاً.' : 'PayPal is currently unavailable. Please try again later.'));
         });
       };
       button.addEventListener('click', handleClick);
@@ -179,7 +201,7 @@ function PayPalCheckout({ method, cardMode, sdk, createOrder, cardholderName, on
       const handleGuestClick = () => {
         void guestSession.start({ presentationMode: 'auto' }, createOrder()).catch((error) => {
           reportPayPalError(error, 'Guest card session error');
-          if (active) onError(isRtl ? 'تعذر بدء الدفع بالبطاقة. حاول مرة أخرى.' : 'Card payment could not start. Please try again.');
+          if (active) onError(checkoutErrorMessage(error, isRtl, isRtl ? 'تعذر بدء الدفع بالبطاقة. حاول مرة أخرى.' : 'Card payment could not start. Please try again.'));
         });
       };
       basicCardButton.addEventListener('click', handleGuestClick);
@@ -220,7 +242,7 @@ function PayPalCheckout({ method, cardMode, sdk, createOrder, cardholderName, on
         reportPayPalError(error, 'Advanced card session error');
         onError(error instanceof PayPalCheckoutError
           ? (isRtl ? 'تعذر بدء الدفع بالبطاقة. حاول مرة أخرى.' : 'Card payment could not start. Please try again.')
-          : error instanceof Error ? error.message : (isRtl ? 'تعذر إتمام الدفع بالبطاقة. حاول مرة أخرى.' : 'Card payment failed. Please try again.'));
+          : checkoutErrorMessage(error, isRtl, isRtl ? 'تعذر إتمام الدفع بالبطاقة. حاول مرة أخرى.' : 'Card payment failed. Please try again.'));
       }
     };
 
@@ -455,7 +477,10 @@ export default function Checkout() {
     if (busy || !method || !['instapay', 'vodafone'].includes(method) || !validCustomer()) return;
     setBusy(true); setError('');
     try { await finish(await createLocalOrder(method), false); }
-    catch { setError('تعذر إنشاء الطلب. تحقق من بياناتك واتصال الإنترنت ثم حاول مرة أخرى.'); }
+    catch (error) {
+      if (import.meta.env.DEV) console.error('[Checkout] local order creation failed', error);
+      setError(checkoutErrorMessage(error, true, 'تعذر إنشاء الطلب. تحقق من بياناتك واتصال الإنترنت ثم حاول مرة أخرى.'));
+    }
     finally { setBusy(false); }
   };
 

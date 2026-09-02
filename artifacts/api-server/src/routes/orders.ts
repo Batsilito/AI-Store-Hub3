@@ -101,7 +101,8 @@ async function withItems(orders: Array<typeof ordersTable.$inferSelect>) {
 
 export function unitPrice(product: ProductRecord, duration: string, currency: "EGP" | "USD", egpPerUsd = 52): number | null {
   const options = product.pricingOptions ?? [];
-  const matched = options.find((option) => option.duration === duration);
+  const normalizedDuration = duration.trim().toLowerCase();
+  const matched = options.find((option) => option.duration.trim().toLowerCase() === normalizedDuration);
   if (matched) {
     if (currency === "USD") {
       return matched.salePriceUsd ?? matched.priceUsd ?? Math.round((matched.salePrice ?? matched.price) / egpPerUsd * 100) / 100;
@@ -109,7 +110,7 @@ export function unitPrice(product: ProductRecord, duration: string, currency: "E
     return matched.salePrice ?? matched.price;
   }
 
-  if (product.duration !== duration) return null;
+  if (product.duration.trim().toLowerCase() !== normalizedDuration) return null;
   if (currency === "USD") return product.salePriceUsd != null ? Number(product.salePriceUsd) : product.priceUsd != null ? Number(product.priceUsd) : Math.round((product.salePrice != null ? Number(product.salePrice) : Number(product.price)) / egpPerUsd * 100) / 100;
   return product.salePrice != null ? Number(product.salePrice) : Number(product.price);
 }
@@ -272,6 +273,10 @@ router.post("/orders", async (req, res): Promise<void> => {
 
   const data = parsed.data;
   if ((data.currency === "USD" && !["paypal", "card"].includes(data.paymentMethod ?? "")) || (data.currency === "EGP" && !["instapay", "vodafone"].includes(data.paymentMethod ?? ""))) {
+    req.log.warn({
+      currency: data.currency,
+      paymentMethod: data.paymentMethod,
+    }, "Rejected order with incompatible payment method");
     res.status(400).json({ error: "Payment method is not valid for the selected currency" }); return;
   }
   const [rateSetting] = await db.select().from(settingsTable).where(eq(settingsTable.key, "egp_usd_rate")).limit(1);
@@ -297,6 +302,12 @@ router.post("/orders", async (req, res): Promise<void> => {
   });
 
   if (calculatedItems.some((item) => item == null)) {
+    req.log.warn({
+      currency: data.currency,
+      paymentMethod: data.paymentMethod,
+      productIds: data.items.map((item) => item.productId),
+      durations: data.items.map((item) => item.duration),
+    }, "Rejected order with unavailable product selection");
     res.status(400).json({ error: "One or more selected products or durations are no longer available in this currency" });
     return;
   }
@@ -325,6 +336,11 @@ router.post("/orders", async (req, res): Promise<void> => {
   const total = Math.max(0, subtotal - discount);
   const cashbackAmount = Math.round((data.cashbackAmount ?? 0) * 100) / 100;
   if (cashbackAmount > total) {
+    req.log.warn({
+      currency: data.currency,
+      cashbackAmount,
+      total,
+    }, "Rejected order with cashback above total");
     res.status(400).json({ error: "Cashback redemption cannot exceed the order total" });
     return;
   }
@@ -436,6 +452,10 @@ router.post("/orders", async (req, res): Promise<void> => {
     });
   } catch (error) {
     if (error instanceof Error && error.message === "Cashback redemption exceeds the available balance") {
+      req.log.warn({
+        currency: data.currency,
+        cashbackAmount,
+      }, "Rejected order with insufficient cashback balance");
       res.status(400).json({ error: error.message });
       return;
     }
