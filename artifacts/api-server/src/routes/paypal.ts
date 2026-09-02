@@ -170,8 +170,27 @@ router.post("/paypal/orders/:paypalOrderId/capture", async (req, res): Promise<v
     if (order.status !== "awaiting_payment" || !["paypal", "card"].includes(order.paymentMethod ?? "")) { structuredError(req, res, requestId, 409, "order_not_awaiting_payment", "Order is not awaiting PayPal payment"); return; }
     const result = await paypal(req, requestId, "capture_order", `/v2/checkout/orders/${encodeURIComponent(id)}/capture`, { method: "POST", headers: { "PayPal-Request-Id": `keytopia-capture-${order.id}` } });
     const payload = result.payload; const capture = captureFrom(payload);
+    const paypalIssue = Array.isArray(payload.details)
+      ? payload.details.find((detail: any) => typeof detail?.issue === "string")?.issue
+      : undefined;
+    if (!result.response.ok) {
+      const complianceFailure = paypalIssue === "COMPLIANCE_VIOLATION";
+      req.log.error({ requestId, orderId: order.id, paypalOrderId: id, paypalIssue: paypalIssue ?? null, paypalDebugId: result.paypalDebugId }, "PayPal capture was rejected");
+      structuredError(
+        req,
+        res,
+        requestId,
+        502,
+        complianceFailure ? "paypal_compliance_violation" : "paypal_capture_failed",
+        complianceFailure
+          ? "PayPal rejected this payment because of a compliance or account restriction"
+          : "PayPal could not complete the payment",
+        result.paypalDebugId,
+      );
+      return;
+    }
     const amount = capture?.amount;
-    const integrityError = !result.response.ok ? "not_completed" : validatePayPalCapture({ localOrderId: order.id, ownerId: order.customerId, authenticatedUserId: customerId, orderStatus: order.status, paymentMethod: order.paymentMethod, expectedAmount: usdAmountFromOrder(order.total), paypalCustomId: payload.purchase_units?.[0]?.custom_id, paypalStatus: payload.status, captureStatus: capture?.status, currency: amount?.currency_code, paidAmount: amount?.value, existingCaptureId: order.paypalCaptureId, captureId: capture?.id });
+    const integrityError = validatePayPalCapture({ localOrderId: order.id, ownerId: order.customerId, authenticatedUserId: customerId, orderStatus: order.status, paymentMethod: order.paymentMethod, expectedAmount: usdAmountFromOrder(order.total), paypalCustomId: payload.purchase_units?.[0]?.custom_id, paypalStatus: payload.status, captureStatus: capture?.status, currency: amount?.currency_code, paidAmount: amount?.value, existingCaptureId: order.paypalCaptureId, captureId: capture?.id });
     if (integrityError) {
       req.log.error({ requestId, orderId: order.id, paypalOrderId: id, integrityError, paypalDebugId: result.paypalDebugId }, "PayPal payment integrity check failed");
       structuredError(req, res, requestId, result.response.ok ? 409 : 502, result.response.ok ? "paypal_payment_verification_failed" : "paypal_capture_failed", result.response.ok ? "Payment verification failed" : "PayPal could not complete the payment", result.paypalDebugId);

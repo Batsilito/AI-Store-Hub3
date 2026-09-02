@@ -513,7 +513,13 @@ export default function Checkout() {
       await finish(localOrderRef.current, true);
     } catch (e) {
       reportPayPalError(e, 'capture');
-      setError(e instanceof PayPalCheckoutError && e.payload.code === 'paypal_payment_verification_failed' ? 'تعذر التحقق من تفاصيل الدفع. لم يتم خصم الطلب.' : 'لم تكتمل عملية الدفع. تحقق من وسيلة الدفع وحاول مرة أخرى.');
+      setError(
+        e instanceof PayPalCheckoutError && e.payload.code === 'paypal_payment_verification_failed'
+          ? 'تعذر التحقق من تفاصيل الدفع. لم يتم خصم الطلب.'
+          : e instanceof PayPalCheckoutError && e.payload.code === 'paypal_compliance_violation'
+            ? `رفض PayPal إتمام العملية بسبب قيود امتثال أو إعدادات الحساب. استخدم حساب مشتري Sandbox صالحاً وتحقق من حساب التاجر ثم حاول مرة أخرى.${e.payload.paypalDebugId ? ` رمز التتبع: ${e.payload.paypalDebugId}` : ''}`
+            : 'لم تكتمل عملية الدفع. تحقق من وسيلة الدفع وحاول مرة أخرى.',
+      );
     } finally { setBusy(false); }
   };
 

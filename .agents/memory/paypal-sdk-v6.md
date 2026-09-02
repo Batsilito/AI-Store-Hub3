@@ -21,6 +21,12 @@ Guest-card `auto` presentation renders PayPal’s hosted form inline with PayPal
 
 **How to apply:** Keep the required `targetElement` and use `presentationMode: "auto"` for this integration; do not switch to `modal` unless the active PayPal environment explicitly supports it.
 
+PayPal Sandbox can create an order successfully and still reject capture with `COMPLIANCE_VIOLATION`; this is an account or transaction restriction, not proof that the local order payload is invalid.
+
+**Why:** The Orders API validates creation and capture separately, and PayPal applies additional buyer, seller, funding, and compliance checks during capture.
+
+**How to apply:** Leave the local order unconfirmed, show the PayPal debug ID, and test with a valid Sandbox Personal buyer and Sandbox Business merchant account before changing capture code.
+
 The preview workflow and published deployment are separate runtimes. Production PayPal routes and diagnostics do not change until the updated project is published; verify preview routes locally before asking the owner to publish.
 
 **Why:** A production config probe can still show the previous build even when the preview has the corrected route and environment wiring.
