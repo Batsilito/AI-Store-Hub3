@@ -22,7 +22,7 @@ type PayPalEligibility = {
   isEligible: (method: PayPalPaymentMethod) => boolean;
 };
 type PayPalPaymentSession = {
-  start: (options: { presentationMode: 'auto' }, order: Promise<PayPalOrder>) => Promise<void>;
+  start: (options: { presentationMode: 'auto' | 'modal'; targetElement?: HTMLElement }, order: Promise<PayPalOrder>) => Promise<void>;
 };
 type PayPalErrorPayload = {
   code?: string;
@@ -216,7 +216,7 @@ function PayPalCheckout({ method, cardMode, sdk, createOrder, cardholderName, on
       }
 
       const startGuestCard = () => {
-        void guestSession.start({ presentationMode: 'auto' }, createOrder()).catch((error) => {
+        void guestSession.start({ presentationMode: 'modal', targetElement: basicCardButton }, createOrder()).catch((error) => {
           reportPayPalError(error, 'Guest card session error');
           if (active) onError(checkoutErrorMessage(error, isRtl, isRtl ? 'تعذر بدء الدفع بالبطاقة. حاول مرة أخرى.' : 'Card payment could not start. Please try again.'));
         });
@@ -398,6 +398,7 @@ export default function Checkout() {
   const [phone, setPhone] = useState(() => sessionStorage.getItem('checkout_phone') ?? '');
   const [method, setMethod] = useState<PaymentMethod>(() => (sessionStorage.getItem('checkout_method') as PaymentMethod) ?? null);
   const [autoLaunchPayment, setAutoLaunchPayment] = useState(false);
+  const [paymentLaunchNonce, setPaymentLaunchNonce] = useState(0);
   const [promoInput, setPromoInput] = useState('');
   const [promo, setPromo] = useState<PromoState>({ status: 'idle', code: '', percentage: 0 });
   const [cashbackInput, setCashbackInput] = useState('');
@@ -555,6 +556,7 @@ export default function Checkout() {
   const selectMethod = (next: Exclude<PaymentMethod, null>) => {
     if (busy) return;
     if (method !== next) { localOrderRef.current = null; idempotencyKeyRef.current = crypto.randomUUID(); sessionStorage.setItem('checkout_idempotency', idempotencyKeyRef.current); }
+    if (next === 'paypal' || next === 'card') setPaymentLaunchNonce(current => current + 1);
     setAutoLaunchPayment(next === 'paypal' || next === 'card');
     setMethod(next); setCashbackUsed(0); setCashbackInput(''); setError('');
   };
@@ -593,7 +595,7 @@ export default function Checkout() {
           </div>
           <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7"><div className="flex items-center gap-3"><div className="grid h-10 w-10 place-items-center rounded-xl bg-blue-50 text-primary"><Wallet className="h-5 w-5"/></div><div><h2 className="text-xl font-bold">وسيلة الدفع</h2><p className="text-sm text-slate-500">اختر الطريقة المناسبة لك</p></div></div>
              {[{label:'الدفع بالجنيه المصري', ids:['instapay','vodafone']}, {label:'الدفع بالدولار',ids:['paypal','card']}].map(group=><fieldset key={group.label} className="mt-6"><legend className="mb-3 flex w-full items-center gap-2 text-sm font-bold text-slate-700"><Banknote className="h-4 w-4 text-primary"/>{group.label}</legend><div role="radiogroup" aria-label={group.label} className="grid gap-3 sm:grid-cols-2">{methods.filter(m=>group.ids.includes(m.id)).map(m=><button key={m.id} type="button" role="radio" aria-checked={method===m.id} onClick={()=>selectMethod(m.id)} className={`relative flex min-h-[104px] w-full cursor-pointer items-center gap-3 rounded-2xl border-2 p-4 text-right transition focus:outline-none focus:ring-2 focus:ring-primary ${method===m.id?'border-primary bg-blue-50/60 shadow-sm':'border-slate-200 hover:border-slate-300'}`}><span className="min-w-0 flex-1"><span className="flex items-center justify-between gap-2">{m.icon}<span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold" dir="ltr">{m.currency}</span></span><span className="mt-2 block text-xs text-slate-500">{m.description}</span></span><span aria-hidden="true" className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border-2 ${method===m.id?'border-primary':'border-slate-400'}`}>{method===m.id&&<span className="h-2.5 w-2.5 rounded-full bg-primary"/>}</span></button>)}</div></fieldset>)}
-            {(method==='paypal'||method==='card') && <div ref={paymentDetailsRef} className="mt-5 scroll-mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4"><div className="mb-3 flex items-center gap-2 text-xs font-semibold text-slate-600"><ShieldCheck className="h-4 w-4 text-emerald-600"/>بيانات الدفع مشفرة وتُعالج بأمان عبر PayPal</div>{method==='paypal'&&<p className="mb-3 text-sm text-slate-600">سيتم فتح نافذة PayPal لتسجيل الدخول وإتمام الدفع بأمان.</p>}{method==='card'&&<p className="mb-3 text-sm text-slate-600">أدخل بيانات بطاقة Visa أو Mastercard مباشرة في الحقول الآمنة أدناه.</p>}{sdkState==='loading'&&<div className="flex min-h-14 items-center justify-center gap-2"><Loader2 className="h-5 w-5 animate-spin"/>جار تجهيز الدفع الآمن…</div>}{sdkState==='unavailable'&&<p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">وسيلة الدفع غير متاحة حالياً. جرّب وسيلة أخرى أو حاول لاحقاً.</p>}{!customerFieldsReady && <button type="button" onClick={validCustomer} className="min-h-12 w-full rounded-xl bg-slate-900 px-4 font-bold text-white">{cta}</button>}{sdkState==='ready' && ((method==='paypal'&&paypalEligible)||(method==='card'&&cardMode)) && sdk && customerFieldsReady && <PayPalCheckout method={method} cardMode={cardMode} sdk={sdk} createOrder={createPayPalOrder} cardholderName={name} onSuccess={capture} onError={setError} isRtl disabled={busy} autoStart={autoLaunchPayment}/>}</div>}
+             {(method==='paypal'||method==='card') && <div ref={paymentDetailsRef} className="mt-5 scroll-mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4"><div className="mb-3 flex items-center gap-2 text-xs font-semibold text-slate-600"><ShieldCheck className="h-4 w-4 text-emerald-600"/>بيانات الدفع مشفرة وتُعالج بأمان عبر PayPal</div>{method==='paypal'&&<p className="mb-3 text-sm text-slate-600">سيتم فتح نافذة PayPal لتسجيل الدخول وإتمام الدفع بأمان.</p>}{method==='card'&&<p className="mb-3 text-sm text-slate-600">{cardMode==='advanced_cards'?'أدخل بيانات بطاقة Visa أو Mastercard مباشرة في الحقول الآمنة أدناه.':'سيتم فتح نافذة PayPal الآمنة لإدخال بيانات بطاقة Visa أو Mastercard.'}</p>}{sdkState==='loading'&&<div className="flex min-h-14 items-center justify-center gap-2"><Loader2 className="h-5 w-5 animate-spin"/>جار تجهيز الدفع الآمن…</div>}{sdkState==='unavailable'&&<p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">وسيلة الدفع غير متاحة حالياً. جرّب وسيلة أخرى أو حاول لاحقاً.</p>}{!customerFieldsReady && <button type="button" onClick={validCustomer} className="min-h-12 w-full rounded-xl bg-slate-900 px-4 font-bold text-white">{cta}</button>}{sdkState==='ready' && ((method==='paypal'&&paypalEligible)||(method==='card'&&cardMode)) && sdk && customerFieldsReady && <PayPalCheckout key={`${method}-${paymentLaunchNonce}`} method={method} cardMode={cardMode} sdk={sdk} createOrder={createPayPalOrder} cardholderName={name} onSuccess={capture} onError={setError} isRtl disabled={busy} autoStart={autoLaunchPayment}/>}</div>}
             {error&&<p role="alert" className="mt-4 flex gap-2 rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700"><AlertCircle className="h-5 w-5 shrink-0"/>{error}</p>}
             {method!=='paypal'&&method!=='card'&&<button onClick={submitManual} disabled={!method||busy} className="mt-6 flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl bg-primary px-5 text-base font-bold text-white shadow-lg shadow-blue-200 disabled:cursor-not-allowed disabled:opacity-50">{busy&&<Loader2 className="h-5 w-5 animate-spin"/>}{cta}</button>}
           </div>
