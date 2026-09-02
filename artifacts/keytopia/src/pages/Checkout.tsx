@@ -21,6 +21,11 @@ type PayPalPaymentMethod = 'paypal' | 'advanced_cards' | 'card';
 type PayPalEligibility = {
   isEligible: (method: PayPalPaymentMethod) => boolean;
 };
+type PayPalSessionCallbacks = {
+  onApprove: (data: { orderId: string }) => Promise<void>;
+  onCancel?: (data?: { orderId?: string }) => void;
+  onError?: (error: unknown) => void;
+};
 type PayPalPaymentSession = {
   start: (options: { presentationMode: 'auto'; targetElement?: HTMLElement }, order: Promise<PayPalOrder>) => Promise<void>;
 };
@@ -104,14 +109,8 @@ type PayPalCardFieldsSession = {
 };
 type PayPalSdk = {
   findEligibleMethods: (options: { currencyCode: string; amount: string }) => Promise<PayPalEligibility>;
-  createPayPalOneTimePaymentSession: (options: {
-    onApprove: (data: { orderId: string }) => Promise<void>;
-    onCancel?: () => void;
-    onError?: (error: unknown) => void;
-  }) => PayPalPaymentSession;
-  createPayPalGuestOneTimePaymentSession?: (options: {
-    onApprove: (data: { orderId: string }) => Promise<void>;
-  }) => PayPalPaymentSession;
+  createPayPalOneTimePaymentSession: (options: PayPalSessionCallbacks) => PayPalPaymentSession;
+  createPayPalGuestOneTimePaymentSession?: (options: PayPalSessionCallbacks) => PayPalPaymentSession;
   createCardFieldsOneTimePaymentSession: () => PayPalCardFieldsSession;
 };
 
@@ -207,7 +206,19 @@ function PayPalCheckout({ method, cardMode, sdk, createOrder, cardholderName, on
       basicCardContainer.appendChild(basicCardButton);
       container.appendChild(basicCardContainer);
       const guestSession = sdk.createPayPalGuestOneTimePaymentSession?.({
-        onApprove: ({ orderId }) => onSuccess(orderId),
+        onApprove: (data) => {
+          const orderId = data?.orderId;
+          if (!orderId) {
+            onError(isRtl ? 'لم يُرجع PayPal رقم عملية الدفع. لم يتم تأكيد الطلب.' : 'PayPal did not return a payment order ID. The order was not confirmed.');
+            return Promise.resolve();
+          }
+          return onSuccess(orderId);
+        },
+        onCancel: () => onError(isRtl ? 'تم إلغاء الدفع بالبطاقة. يمكنك المحاولة مرة أخرى.' : 'Card payment was cancelled. You can try again.'),
+        onError: (error) => {
+          reportPayPalError(error, 'Guest card session error');
+          onError(checkoutErrorMessage(error, isRtl, isRtl ? 'تعذر إتمام الدفع بالبطاقة. حاول مرة أخرى.' : 'Card payment could not be completed. Please try again.'));
+        },
       });
 
       if (!guestSession) {
