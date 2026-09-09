@@ -231,6 +231,10 @@ function PayPalCheckout({ method, cardMode, payLaterDetails, sdk, createOrder, c
     if (cardMode === 'card') {
       const basicCardContainer = document.createElement('paypal-basic-card-container');
       const basicCardButton = document.createElement('paypal-basic-card-button');
+      basicCardContainer.style.display = 'block';
+      basicCardContainer.style.width = '100%';
+      basicCardButton.style.display = 'block';
+      basicCardButton.style.width = '100%';
       basicCardContainer.appendChild(basicCardButton);
       container.appendChild(basicCardContainer);
       const guestLifecycle = createPayPalSessionLifecycle({
@@ -295,7 +299,7 @@ function PayPalCheckout({ method, cardMode, payLaterDetails, sdk, createOrder, c
     }));
     fields.forEach((field) => {
       const fieldContainer = document.createElement('div');
-      fieldContainer.className = 'mb-2 h-12 min-w-0 overflow-hidden rounded-lg border border-slate-300 bg-white px-3 py-2 last:mb-0';
+      fieldContainer.className = 'mb-2 h-12 w-full min-w-0 overflow-hidden rounded-lg border border-slate-300 bg-white px-3 py-2 last:mb-0';
       fieldContainer.appendChild(field);
       container.appendChild(fieldContainer);
     });
@@ -332,9 +336,9 @@ function PayPalCheckout({ method, cardMode, payLaterDetails, sdk, createOrder, c
     };
   }, [method, cardMode, payLaterDetails, sdk, autoStart]);
 
-  if (method === 'paypal' || method === 'paylater') return <div className={disabled ? 'pointer-events-none opacity-60' : ''} ref={buttonsContainer} />;
-  return <div className="space-y-2 rounded-xl border border-black/10 bg-white p-3 sm:p-4">
-    <div ref={cardContainer} className="min-h-11 min-w-0 overflow-hidden rounded-lg border p-2" />
+  if (method === 'paypal' || method === 'paylater') return <div className={`w-full ${disabled ? 'pointer-events-none opacity-60' : ''}`} ref={buttonsContainer} />;
+  return <div className="w-full space-y-2 rounded-xl border border-black/10 bg-white p-3 sm:p-4">
+    <div ref={cardContainer} className="min-h-11 w-full min-w-0 overflow-hidden rounded-lg border p-2" />
     {cardMode === 'advanced_cards' && (
       <button ref={cardSubmitButton} type="button" disabled={disabled || !cardReady} className="w-full rounded-xl bg-[#0070ba] p-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{isRtl ? 'الدفع بالبطاقة' : 'Pay by card'}</button>
     )}
@@ -710,7 +714,7 @@ export default function Checkout() {
     );
   };
   const renderAutomaticPaymentPanel = (paymentMethod: 'paypal' | 'paylater' | 'card') => (
-    <div ref={paymentDetailsRef} className="mt-5 scroll-mt-6 rounded-[2rem] border-2 border-cyan-200/90 bg-[#f7fafc] p-4 shadow-[0_0_28px_rgba(34,211,238,.16)] sm:p-6">
+    <div ref={paymentDetailsRef} className="mt-5 w-full scroll-mt-6 rounded-[2rem] border-2 border-cyan-200/90 bg-[#f7fafc] p-4 shadow-[0_0_28px_rgba(34,211,238,.16)] sm:p-6">
       <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-slate-600">
         <ShieldCheck className="h-4 w-4 text-emerald-600" />
         بيانات الدفع مشفرة وتُعالج بأمان عبر PayPal
@@ -770,7 +774,7 @@ export default function Checkout() {
                         role="radiogroup"
                         aria-label={group.label}
                         className={compact
-                          ? 'space-y-3 rounded-[2rem] border-2 border-cyan-300/90 bg-[#f7fafc] p-4 shadow-[0_0_28px_rgba(34,211,238,.14)] sm:p-5'
+                          ? 'w-full space-y-3 rounded-[2rem] border-2 border-cyan-300/90 bg-[#f7fafc] p-4 shadow-[0_0_28px_rgba(34,211,238,.14)] sm:p-5'
                           : 'grid gap-3 sm:grid-cols-2'}
                       >
                        {methods.filter(m => group.ids.includes(m.id) && (m.id !== 'paylater' || payLaterEligible)).map(m => renderPaymentMethod(m, compact))}
