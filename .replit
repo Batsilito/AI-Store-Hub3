@@ -44,7 +44,7 @@ waitForPort = 5000
 channel = "stable-25_05"
 
 [objectStorage]
-defaultBucketID = "replit-objstore-8e0d08af-33be-4587-899b-681ed5b2a437"
+defaultBucketID = "replit-objstore-a05bddcf-5891-4c2c-b306-15405b5a99c8"
 
 [postMerge]
 path = "scripts/post-merge.sh"
