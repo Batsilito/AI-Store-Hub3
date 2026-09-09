@@ -197,8 +197,13 @@ function ImageUploader({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
       });
-      if (!meta.ok) throw new Error('Failed to get upload URL');
-      const { uploadURL, objectPath } = await meta.json() as { uploadURL: string; objectPath: string };
+      const metaBody = await meta.json().catch(() => null) as
+        | { uploadURL?: string; objectPath?: string; error?: string }
+        | null;
+      if (!meta.ok || !metaBody?.uploadURL || !metaBody.objectPath) {
+        throw new Error(metaBody?.error || 'Failed to get upload URL');
+      }
+      const { uploadURL, objectPath } = metaBody;
 
       // Step 2 — upload directly to GCS
       const putRes = await fetch(uploadURL, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
@@ -208,7 +213,7 @@ function ImageUploader({
       // unauthenticated storefront visitors can load product images)
       onChange(`/api/storage${objectPath}`);
     } catch (e) {
-      setErr('Upload failed. Please try again.');
+      setErr(e instanceof Error ? e.message : 'Upload failed. Please try again.');
     } finally {
       setUploading(false);
     }

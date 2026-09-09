@@ -51,6 +51,14 @@ export class ObjectStorageService {
           .filter((path) => path.length > 0),
       ),
     );
+    const defaultBucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID?.trim();
+    if (defaultBucketId) {
+      const defaultBucketPath = `/${defaultBucketId}`;
+      return [
+        defaultBucketPath,
+        ...paths.filter((path) => path !== defaultBucketPath),
+      ];
+    }
     if (paths.length === 0) {
       throw new Error(
         "PUBLIC_OBJECT_SEARCH_PATHS not set. Create a bucket in 'Object Storage' " +

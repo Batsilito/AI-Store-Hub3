@@ -50,7 +50,11 @@ router.post(
       );
     } catch (error) {
       req.log.error({ err: error }, 'Error generating upload URL');
-      res.status(500).json({ error: 'Failed to generate upload URL' });
+      const message =
+        error instanceof Error && error.message.includes('no allowed resources')
+          ? 'App Storage is not connected to this Repl. Open App Storage, create a bucket or add the existing bucket to this Repl, then restart the preview.'
+          : 'Failed to generate upload URL';
+      res.status(message.startsWith('App Storage') ? 503 : 500).json({ error: message });
     }
   },
 );
@@ -89,7 +93,11 @@ router.get(
       }
     } catch (error) {
       req.log.error({ err: error }, 'Error serving public object');
-      res.status(500).json({ error: 'Failed to serve public object' });
+      const message =
+        error instanceof Error && error.message.includes('no allowed resources')
+          ? 'App Storage is not connected to this Repl.'
+          : 'Failed to serve public object';
+      res.status(message.startsWith('App Storage') ? 503 : 500).json({ error: message });
     }
   },
 );
