@@ -651,15 +651,21 @@ export default function Checkout() {
     { id: 'card' as const, title: 'بطاقة ائتمان أو خصم', description: 'Visa أو Mastercard عبر بوابة PayPal الآمنة', icon: <div className="flex gap-1"><VisaLogo/><MastercardLogo/></div>, currency: 'USD' },
   ];
   const cta = method === 'paypal' ? 'الدفع باستخدام PayPal' : method === 'paylater' ? 'الدفع بالتقسيط عبر PayPal' : method === 'card' ? 'الدفع بالبطاقة' : method === 'instapay' ? 'المتابعة إلى InstaPay' : method === 'vodafone' ? 'عرض بيانات Vodafone Cash' : 'اختر وسيلة الدفع';
+  const paymentPoweredBy = (
+    <div className="mt-2 flex items-center justify-center gap-1 text-xs italic text-slate-500" dir="ltr">
+      <span>Powered by</span>
+      <PaypalLogo />
+    </div>
+  );
   const renderPaymentMethod = (m: (typeof methods)[number], compact = false) => {
     const selected = method === m.id;
     const isPaypal = m.id === 'paypal';
     const isCard = m.id === 'card';
     const isPayLater = m.id === 'paylater';
     const compactClass = isPaypal
-      ? 'border-[#f5bd2f] bg-[#ffc439] text-[#25313b] shadow-[0_5px_14px_rgba(245,189,47,.2)] hover:bg-[#f8bb32]'
+      ? 'border-transparent bg-[#ffc439] text-[#25313b] shadow-[0_5px_14px_rgba(245,189,47,.2)] hover:bg-[#f8bb32]'
       : isCard
-        ? 'border-[#2d2d2d] bg-[#2d2d2d] text-white shadow-[0_5px_14px_rgba(45,45,45,.16)] hover:bg-[#242424]'
+        ? 'border-transparent bg-[#2d2d2d] text-white shadow-[0_5px_14px_rgba(45,45,45,.16)] hover:bg-[#242424]'
         : 'border-slate-200 bg-slate-100 text-slate-800 hover:border-slate-300';
     return (
       <button
@@ -669,13 +675,22 @@ export default function Checkout() {
         aria-checked={selected}
         onClick={() => selectMethod(m.id)}
         className={compact
-          ? `relative flex min-h-[60px] w-full items-center justify-center rounded-xl border px-5 py-3 transition focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:ring-offset-2 ${compactClass} ${selected ? 'ring-2 ring-cyan-400 ring-offset-2' : ''}`
+          ? `relative flex min-h-[88px] w-full items-center justify-center rounded-[0.65rem] border px-5 py-4 transition focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:ring-offset-2 ${compactClass} ${selected ? 'ring-2 ring-cyan-400 ring-offset-2' : ''}`
           : `relative flex min-h-[104px] w-full cursor-pointer items-center gap-3 rounded-2xl border-2 p-4 text-right transition focus:outline-none focus:ring-2 focus:ring-primary ${selected ? 'border-primary bg-blue-50/60 shadow-sm' : 'border-slate-200 hover:border-slate-300'}`}
       >
         {compact ? (
           <span className="flex items-center justify-center gap-2.5" dir="ltr">
-            {isCard ? <CreditCard className="h-6 w-6" strokeWidth={1.8} /> : isPaypal || isPayLater ? <PaypalLogo /> : m.icon}
-            <span className="text-base font-bold">{isPaypal ? 'Pay with' : isCard ? 'Debit or Credit Card' : m.title}</span>
+            {isPaypal ? (
+              <>
+                <span className="text-lg font-bold">Pay with</span>
+                <PaypalLogo />
+              </>
+            ) : (
+              <>
+                {isCard ? <CreditCard className="h-8 w-8" strokeWidth={1.8} /> : isPayLater ? <PaypalLogo /> : m.icon}
+                <span className="text-lg font-bold">{isCard ? 'Debit or Credit Card' : m.title}</span>
+              </>
+            )}
           </span>
         ) : (
           <>
@@ -727,10 +742,6 @@ export default function Checkout() {
           autoStart={autoLaunchPayment}
         />
       )}
-      <div className="mt-4 flex items-center justify-center gap-1 text-xs text-slate-500" dir="ltr">
-        <span>Powered by</span>
-        <PaypalLogo />
-      </div>
     </div>
   );
 
@@ -755,10 +766,17 @@ export default function Checkout() {
                      <legend className="mb-3 flex w-full items-center gap-2 text-sm font-bold text-slate-700">
                        <Banknote className="h-4 w-4 text-primary"/>{group.label}
                      </legend>
-                     <div role="radiogroup" aria-label={group.label} className={compact ? 'space-y-3' : 'grid gap-3 sm:grid-cols-2'}>
+                      <div
+                        role="radiogroup"
+                        aria-label={group.label}
+                        className={compact
+                          ? 'space-y-3 rounded-[2rem] border-2 border-cyan-300/90 bg-[#f7fafc] p-4 shadow-[0_0_28px_rgba(34,211,238,.14)] sm:p-5'
+                          : 'grid gap-3 sm:grid-cols-2'}
+                      >
                        {methods.filter(m => group.ids.includes(m.id) && (m.id !== 'paylater' || payLaterEligible)).map(m => renderPaymentMethod(m, compact))}
+                        {compact && cardPaymentPanel}
+                        {compact && paymentPoweredBy}
                      </div>
-                      {compact && cardPaymentPanel}
                    </fieldset>
                  );
                })}
