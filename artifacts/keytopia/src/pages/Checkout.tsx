@@ -404,14 +404,15 @@ function MastercardLogo() {
   </span>;
 }
 
-function PaypalLogo() {
-  return <span className="inline-flex items-center gap-1.5 text-[#003087]" role="img" aria-label="PayPal">
-    <span className="relative inline-block h-7 w-7 shrink-0" aria-hidden="true">
-      <span className="absolute -top-1 start-1 text-[27px] font-black italic leading-none text-[#003087]">P</span>
-      <span className="absolute top-0 start-0 text-[27px] font-black italic leading-none text-[#0070ba]">P</span>
-    </span>
-    <span className="text-base font-bold tracking-tight">PayPal</span>
-  </span>;
+function PaypalLogo({ size = 'default' }: { size?: 'default' | 'large' }) {
+  return (
+    <img
+      src="/brand/paypal-wordmark.png"
+      alt="PayPal"
+      className={size === 'large' ? 'h-10 w-auto shrink-0 object-contain' : 'h-7 w-auto shrink-0 object-contain'}
+      draggable={false}
+    />
+  );
 }
 
 function InstapayLogo() {
@@ -687,7 +688,7 @@ export default function Checkout() {
             {isPaypal ? (
               <>
                 <span className="text-lg font-bold">Pay with</span>
-                <PaypalLogo />
+                <PaypalLogo size="large" />
               </>
             ) : (
               <>

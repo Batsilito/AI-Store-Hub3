@@ -295,9 +295,22 @@ async function signObjectURL({
     },
   );
   if (!response.ok) {
+    const responseText = await response.text().catch(() => '');
+    let detail = responseText.trim();
+    try {
+      const body = JSON.parse(responseText) as { error?: unknown; message?: unknown };
+      detail = typeof body.error === 'string'
+        ? body.error
+        : typeof body.message === 'string'
+          ? body.message
+          : detail;
+    } catch {
+      // The sidecar commonly returns a plain-text error such as
+      // "no allowed resources".
+    }
     throw new Error(
       `Failed to sign object URL, errorcode: ${response.status}, ` +
-        `make sure you're running on Replit`,
+        `${detail ? `${detail}. ` : ''}make sure you're running on Replit`,
     );
   }
 
