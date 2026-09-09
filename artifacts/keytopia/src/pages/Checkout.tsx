@@ -295,7 +295,7 @@ function PayPalCheckout({ method, cardMode, payLaterDetails, sdk, createOrder, c
     }));
     fields.forEach((field) => {
       const fieldContainer = document.createElement('div');
-      fieldContainer.className = 'mb-2 h-11 min-w-0 overflow-hidden rounded-lg border p-2 last:mb-0';
+      fieldContainer.className = 'mb-2 h-12 min-w-0 overflow-hidden rounded-lg border border-slate-300 bg-white px-3 py-2 last:mb-0';
       fieldContainer.appendChild(field);
       container.appendChild(fieldContainer);
     });
@@ -608,7 +608,7 @@ export default function Checkout() {
        const eligibleForPayLater = eligible.isEligible('paylater');
        setSdk(instance); setPaypalEligible(eligible.isEligible('paypal')); setPayLaterEligible(eligibleForPayLater);
        setPayLaterDetails(eligibleForPayLater ? eligible.getDetails?.('paylater') ?? null : null);
-      setCardMode(eligible.isEligible('advanced_cards') ? 'advanced_cards' : eligible.isEligible('card') ? 'card' : null);
+       setCardMode(eligible.isEligible('card') ? 'card' : eligible.isEligible('advanced_cards') ? 'advanced_cards' : null);
        if (method === 'paylater' && !eligibleForPayLater) {
          sessionStorage.removeItem('checkout_method');
          setMethod(null);
@@ -651,9 +651,52 @@ export default function Checkout() {
     { id: 'card' as const, title: 'بطاقة ائتمان أو خصم', description: 'Visa أو Mastercard عبر بوابة PayPal الآمنة', icon: <div className="flex gap-1"><VisaLogo/><MastercardLogo/></div>, currency: 'USD' },
   ];
   const cta = method === 'paypal' ? 'الدفع باستخدام PayPal' : method === 'paylater' ? 'الدفع بالتقسيط عبر PayPal' : method === 'card' ? 'الدفع بالبطاقة' : method === 'instapay' ? 'المتابعة إلى InstaPay' : method === 'vodafone' ? 'عرض بيانات Vodafone Cash' : 'اختر وسيلة الدفع';
+  const renderPaymentMethod = (m: (typeof methods)[number], compact = false) => {
+    const selected = method === m.id;
+    const isPaypal = m.id === 'paypal';
+    const isCard = m.id === 'card';
+    const isPayLater = m.id === 'paylater';
+    const compactClass = isPaypal
+      ? 'border-[#f5bd2f] bg-[#ffc439] text-[#25313b] shadow-[0_5px_14px_rgba(245,189,47,.2)] hover:bg-[#f8bb32]'
+      : isCard
+        ? 'border-[#2d2d2d] bg-[#2d2d2d] text-white shadow-[0_5px_14px_rgba(45,45,45,.16)] hover:bg-[#242424]'
+        : 'border-slate-200 bg-slate-100 text-slate-800 hover:border-slate-300';
+    return (
+      <button
+        key={m.id}
+        type="button"
+        role="radio"
+        aria-checked={selected}
+        onClick={() => selectMethod(m.id)}
+        className={compact
+          ? `relative flex min-h-[60px] w-full items-center justify-center rounded-xl border px-5 py-3 transition focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:ring-offset-2 ${compactClass} ${selected ? 'ring-2 ring-cyan-400 ring-offset-2' : ''}`
+          : `relative flex min-h-[104px] w-full cursor-pointer items-center gap-3 rounded-2xl border-2 p-4 text-right transition focus:outline-none focus:ring-2 focus:ring-primary ${selected ? 'border-primary bg-blue-50/60 shadow-sm' : 'border-slate-200 hover:border-slate-300'}`}
+      >
+        {compact ? (
+          <span className="flex items-center justify-center gap-2.5" dir="ltr">
+            {isCard ? <CreditCard className="h-6 w-6" strokeWidth={1.8} /> : isPaypal || isPayLater ? <PaypalLogo /> : m.icon}
+            <span className="text-base font-bold">{isPaypal ? 'Pay with' : isCard ? 'Debit or Credit Card' : m.title}</span>
+          </span>
+        ) : (
+          <>
+            <span className="min-w-0 flex-1">
+              <span className="flex items-center justify-between gap-2">
+                {m.icon}
+                <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold" dir="ltr">{m.currency}</span>
+              </span>
+              <span className="mt-2 block text-xs text-slate-500">{m.description}</span>
+            </span>
+            <span aria-hidden="true" className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border-2 ${selected ? 'border-primary' : 'border-slate-400'}`}>
+              {selected && <span className="h-2.5 w-2.5 rounded-full bg-primary" />}
+            </span>
+          </>
+        )}
+      </button>
+    );
+  };
   const automaticPaymentPanel = (method === 'paypal' || method === 'paylater' || method === 'card') ? (
-    <div ref={paymentDetailsRef} className="mt-5 scroll-mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-      <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-slate-600">
+     <div ref={paymentDetailsRef} className="mt-5 scroll-mt-6 rounded-[2rem] border-2 border-cyan-200/90 bg-[#f7fafc] p-4 shadow-[0_0_28px_rgba(34,211,238,.16)] sm:p-6">
+       <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-slate-600">
         <ShieldCheck className="h-4 w-4 text-emerald-600" />
         بيانات الدفع مشفرة وتُعالج بأمان عبر PayPal
       </div>
@@ -684,6 +727,10 @@ export default function Checkout() {
           autoStart={autoLaunchPayment}
         />
       )}
+       <div className="mt-4 flex items-center justify-center gap-1 text-xs text-slate-500" dir="ltr">
+         <span>Powered by</span>
+         <PaypalLogo />
+       </div>
     </div>
   ) : null;
 
@@ -695,8 +742,20 @@ export default function Checkout() {
           <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7"><div className="flex items-center gap-3"><div className="grid h-10 w-10 place-items-center rounded-xl bg-blue-50 text-primary"><User className="h-5 w-5"/></div><div><h1 className="text-xl font-bold text-slate-950">بيانات العميل</h1><p className="text-sm text-slate-500">سنستخدمها لتأكيد وتسليم طلبك فقط</p></div></div>
             <div className="mt-6 grid gap-4 sm:grid-cols-2"><label className="sm:col-span-2 text-sm font-bold">الاسم الكامل<input value={name} onChange={e=>setName(e.target.value)} autoComplete="name" className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 outline-none focus:border-primary focus:ring-2 focus:ring-blue-100" placeholder="اكتب اسمك الكامل"/></label><label className="text-sm font-bold">البريد الإلكتروني<input type="email" value={email} onChange={e=>setEmail(e.target.value)} autoComplete="email" className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 outline-none focus:border-primary focus:ring-2 focus:ring-blue-100" placeholder="name@example.com" dir="ltr"/></label><label className="text-sm font-bold">رقم الهاتف<input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} autoComplete="tel" className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 outline-none focus:border-primary focus:ring-2 focus:ring-blue-100" placeholder="01xxxxxxxxx" dir="ltr"/></label></div>
           </div>
-          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7"><div className="flex items-center gap-3"><div className="grid h-10 w-10 place-items-center rounded-xl bg-blue-50 text-primary"><Wallet className="h-5 w-5"/></div><div><h2 className="text-xl font-bold">وسيلة الدفع</h2><p className="text-sm text-slate-500">اختر الطريقة المناسبة لك</p></div></div>
-              {[{label:'الدفع بالجنيه المصري', ids:['instapay','vodafone']}, {label:'الدفع بالدولار',ids:['paypal','paylater','card']}].map(group=><fieldset key={group.label} className="mt-6"><legend className="mb-3 flex w-full items-center gap-2 text-sm font-bold text-slate-700"><Banknote className="h-4 w-4 text-primary"/>{group.label}</legend><div role="radiogroup" aria-label={group.label} className="grid gap-3 sm:grid-cols-2">{methods.filter(m=>group.ids.includes(m.id) && (m.id !== 'paylater' || payLaterEligible)).map(m=><button key={m.id} type="button" role="radio" aria-checked={method===m.id} onClick={()=>selectMethod(m.id)} className={`relative flex min-h-[104px] w-full cursor-pointer items-center gap-3 rounded-2xl border-2 p-4 text-right transition focus:outline-none focus:ring-2 focus:ring-primary ${method===m.id?'border-primary bg-blue-50/60 shadow-sm':'border-slate-200 hover:border-slate-300'}`}><span className="min-w-0 flex-1"><span className="flex items-center justify-between gap-2">{m.icon}<span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold" dir="ltr">{m.currency}</span></span><span className="mt-2 block text-xs text-slate-500">{m.description}</span></span><span aria-hidden="true" className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border-2 ${method===m.id?'border-primary':'border-slate-400'}`}>{method===m.id&&<span className="h-2.5 w-2.5 rounded-full bg-primary"/>}</span></button>)}</div></fieldset>)}
+           <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7"><div className="flex items-center gap-3"><div className="grid h-10 w-10 place-items-center rounded-xl bg-blue-50 text-primary"><Wallet className="h-5 w-5"/></div><div><h2 className="text-xl font-bold">وسيلة الدفع</h2><p className="text-sm text-slate-500">اختر الطريقة المناسبة لك</p></div></div>
+               {[{label:'الدفع بالجنيه المصري', ids:['instapay','vodafone']}, {label:'الدفع بالدولار',ids:['paypal','paylater','card']}].map(group => {
+                 const compact = group.label === 'الدفع بالدولار';
+                 return (
+                   <fieldset key={group.label} className="mt-6">
+                     <legend className="mb-3 flex w-full items-center gap-2 text-sm font-bold text-slate-700">
+                       <Banknote className="h-4 w-4 text-primary"/>{group.label}
+                     </legend>
+                     <div role="radiogroup" aria-label={group.label} className={compact ? 'space-y-3' : 'grid gap-3 sm:grid-cols-2'}>
+                       {methods.filter(m => group.ids.includes(m.id) && (m.id !== 'paylater' || payLaterEligible)).map(m => renderPaymentMethod(m, compact))}
+                     </div>
+                   </fieldset>
+                 );
+               })}
             {error&&<p role="alert" className="mt-4 flex gap-2 rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700"><AlertCircle className="h-5 w-5 shrink-0"/>{error}</p>}
              {method!=='paypal'&&method!=='paylater'&&method!=='card'&&<button onClick={submitManual} disabled={!method||busy} className="mt-6 flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl bg-primary px-5 text-base font-bold text-white shadow-lg shadow-blue-200 disabled:cursor-not-allowed disabled:opacity-50">{busy&&<Loader2 className="h-5 w-5 animate-spin"/>}{cta}</button>}
           </div>
