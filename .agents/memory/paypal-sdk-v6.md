@@ -62,3 +62,9 @@ PayPal customized card fields are eligibility-gated by the merchant/buyer countr
 **Why:** Forcing the `advanced_cards` component outside PayPal's eligible regions can produce an empty or unusable card option even when PayPal account checkout works.
 
 **How to apply:** Use `findEligibleMethods` before rendering custom fields, show the PayPal-hosted card path only when PayPal reports it eligible, and explain when neither card path is available.
+
+PayPal capture responses may omit the `custom_id` that was provided during order creation.
+
+**Why:** Treating an omitted response field as a mismatch can reject a completed capture after PayPal has already transferred the money.
+
+**How to apply:** Check `custom_id` when PayPal returns it, but rely on the stored PayPal order ID, authenticated owner, completed statuses, currency, and amount to bind the capture when it is absent.

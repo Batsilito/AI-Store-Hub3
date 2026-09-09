@@ -7,3 +7,4 @@
 - [Referral cashback reconciliation](referral-cashback-reconciliation.md) — completed referred orders need idempotent repair so missed cross-account credits can be recovered safely.
 - [Abandoned cart schema compatibility](abandoned-carts-schema-compat.md) — inspect canonical Neon before changing cart storage; deployed data may use a legacy table shape.
 - [PayPal JavaScript SDK v6](paypal-sdk-v6.md) — v6 uses payment sessions; hosted cardholder name is submitted as an option, not rendered as a Card Fields component.
+- [PayPal capture response fields](paypal-sdk-v6.md) — capture responses may omit custom_id; validate it when present, but bind the payment using the stored PayPal order, owner, amount, currency, and status.
