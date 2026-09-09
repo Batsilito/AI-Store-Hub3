@@ -694,29 +694,29 @@ export default function Checkout() {
       </button>
     );
   };
-  const automaticPaymentPanel = (method === 'paypal' || method === 'paylater' || method === 'card') ? (
-     <div ref={paymentDetailsRef} className="mt-5 scroll-mt-6 rounded-[2rem] border-2 border-cyan-200/90 bg-[#f7fafc] p-4 shadow-[0_0_28px_rgba(34,211,238,.16)] sm:p-6">
-       <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-slate-600">
+  const renderAutomaticPaymentPanel = (paymentMethod: 'paypal' | 'paylater' | 'card') => (
+    <div ref={paymentDetailsRef} className="mt-5 scroll-mt-6 rounded-[2rem] border-2 border-cyan-200/90 bg-[#f7fafc] p-4 shadow-[0_0_28px_rgba(34,211,238,.16)] sm:p-6">
+      <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-slate-600">
         <ShieldCheck className="h-4 w-4 text-emerald-600" />
         بيانات الدفع مشفرة وتُعالج بأمان عبر PayPal
       </div>
-      {method === 'paypal' && <p className="mb-3 text-sm text-slate-600">سيتم فتح نافذة PayPal لتسجيل الدخول وإتمام الدفع بأمان.</p>}
-      {method === 'paylater' && <p className="mb-3 text-sm text-slate-600">سيعرض PayPal خيارات الدفع على دفعات إذا كنت مؤهلاً لها.</p>}
-      {method === 'card' && <p className="mb-3 text-sm text-slate-600">{cardMode === 'advanced_cards' ? 'أدخل بيانات بطاقة Visa أو Mastercard مباشرة في الحقول الآمنة أدناه.' : 'سيتم فتح نافذة PayPal الآمنة لإدخال بيانات بطاقة Visa أو Mastercard.'}</p>}
-       {method === 'card' && <p className="mb-3 text-xs leading-6 text-slate-500">
-         عند الدفع بالبطاقة، فإنك تقر بأن بياناتك ستُعالج بواسطة PayPal وفقاً لـ <a className="font-semibold text-primary underline" href="https://www.paypal.com/webapps/mpp/ua/privacy-full" target="_blank" rel="noreferrer">بيان خصوصية PayPal</a>.
-         By paying with your card, you acknowledge that your data will be processed by PayPal subject to the <a className="font-semibold text-primary underline" href="https://www.paypal.com/webapps/mpp/ua/privacy-full" target="_blank" rel="noreferrer">PayPal Privacy Statement</a>.
-       </p>}
+      {paymentMethod === 'paypal' && <p className="mb-3 text-sm text-slate-600">سيتم فتح نافذة PayPal لتسجيل الدخول وإتمام الدفع بأمان.</p>}
+      {paymentMethod === 'paylater' && <p className="mb-3 text-sm text-slate-600">سيعرض PayPal خيارات الدفع على دفعات إذا كنت مؤهلاً لها.</p>}
+      {paymentMethod === 'card' && <p className="mb-3 text-sm text-slate-600">{cardMode === 'advanced_cards' ? 'أدخل بيانات بطاقة Visa أو Mastercard مباشرة في الحقول الآمنة أدناه.' : 'سيتم فتح نافذة PayPal الآمنة لإدخال بيانات بطاقة Visa أو Mastercard.'}</p>}
+      {paymentMethod === 'card' && <p className="mb-3 text-xs leading-6 text-slate-500">
+        عند الدفع بالبطاقة، فإنك تقر بأن بياناتك ستُعالج بواسطة PayPal وفقاً لـ <a className="font-semibold text-primary underline" href="https://www.paypal.com/webapps/mpp/ua/privacy-full" target="_blank" rel="noreferrer">بيان خصوصية PayPal</a>.
+        By paying with your card, you acknowledge that your data will be processed by PayPal subject to the <a className="font-semibold text-primary underline" href="https://www.paypal.com/webapps/mpp/ua/privacy-full" target="_blank" rel="noreferrer">PayPal Privacy Statement</a>.
+      </p>}
       {sdkState === 'loading' && <div className="flex min-h-14 items-center justify-center gap-2"><Loader2 className="h-5 w-5 animate-spin" />جار تجهيز الدفع الآمن…</div>}
       {sdkState === 'unavailable' && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">وسيلة الدفع غير متاحة حالياً. جرّب وسيلة أخرى أو حاول لاحقاً.</p>}
-       {sdkState === 'ready' && method === 'card' && !cardMode && <p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">الدفع بالبطاقات غير متاح لهذا التاجر أو بهذه العملة عبر PayPal حالياً. جرّب PayPal أو وسيلة دفع أخرى.</p>}
+      {sdkState === 'ready' && paymentMethod === 'card' && !cardMode && <p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">الدفع بالبطاقات غير متاح لهذا التاجر أو بهذه العملة عبر PayPal حالياً. جرّب PayPal أو وسيلة دفع أخرى.</p>}
       {!customerFieldsReady && <button type="button" onClick={validCustomer} className="min-h-12 w-full rounded-xl bg-slate-900 px-4 font-bold text-white">{cta}</button>}
-       {sdkState === 'ready' && ((method === 'paypal' && paypalEligible) || (method === 'paylater' && payLaterEligible && payLaterDetails) || (method === 'card' && cardMode)) && sdk && customerFieldsReady && (
+      {sdkState === 'ready' && ((paymentMethod === 'paypal' && paypalEligible) || (paymentMethod === 'paylater' && payLaterEligible && payLaterDetails) || (paymentMethod === 'card' && cardMode)) && sdk && customerFieldsReady && (
         <PayPalCheckout
-          key={`${method}-${paymentLaunchNonce}`}
-          method={method}
+          key={`${paymentMethod}-${paymentLaunchNonce}`}
+          method={paymentMethod}
           cardMode={cardMode}
-           payLaterDetails={payLaterDetails}
+          payLaterDetails={payLaterDetails}
           sdk={sdk}
           createOrder={createPayPalOrder}
           cardholderName={name}
@@ -727,12 +727,17 @@ export default function Checkout() {
           autoStart={autoLaunchPayment}
         />
       )}
-       <div className="mt-4 flex items-center justify-center gap-1 text-xs text-slate-500" dir="ltr">
-         <span>Powered by</span>
-         <PaypalLogo />
-       </div>
+      <div className="mt-4 flex items-center justify-center gap-1 text-xs text-slate-500" dir="ltr">
+        <span>Powered by</span>
+        <PaypalLogo />
+      </div>
     </div>
-  ) : null;
+  );
+
+  const automaticPaymentPanel = method === 'paypal' || method === 'paylater'
+    ? renderAutomaticPaymentPanel(method)
+    : null;
+  const cardPaymentPanel = method === 'card' ? renderAutomaticPaymentPanel('card') : null;
 
   return <Layout><main className="bg-[#f6f8fb]" dir="rtl">
     <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:py-10">
@@ -753,10 +758,11 @@ export default function Checkout() {
                      <div role="radiogroup" aria-label={group.label} className={compact ? 'space-y-3' : 'grid gap-3 sm:grid-cols-2'}>
                        {methods.filter(m => group.ids.includes(m.id) && (m.id !== 'paylater' || payLaterEligible)).map(m => renderPaymentMethod(m, compact))}
                      </div>
+                      {compact && cardPaymentPanel}
                    </fieldset>
                  );
                })}
-            {error&&<p role="alert" className="mt-4 flex gap-2 rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700"><AlertCircle className="h-5 w-5 shrink-0"/>{error}</p>}
+             {error&&<p role="alert" className="mt-4 flex gap-2 rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700"><AlertCircle className="h-5 w-5 shrink-0"/>{error}</p>}
              {method!=='paypal'&&method!=='paylater'&&method!=='card'&&<button onClick={submitManual} disabled={!method||busy} className="mt-6 flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl bg-primary px-5 text-base font-bold text-white shadow-lg shadow-blue-200 disabled:cursor-not-allowed disabled:opacity-50">{busy&&<Loader2 className="h-5 w-5 animate-spin"/>}{cta}</button>}
           </div>
         </section>
