@@ -109,9 +109,9 @@ app.use(
   }),
 );
 
-// Keep malformed or unexpectedly large requests from consuming unbounded
-// memory. The API only accepts small JSON/form payloads; uploads go directly to
-// object storage via signed URLs.
+// Keep malformed or unexpectedly large JSON/form requests from consuming
+// unbounded memory. The image upload route uses its own tightly limited raw
+// body parser because it writes through the Replit App Storage SDK.
 app.use(express.json({ limit: "256kb" }));
 app.use(express.urlencoded({ extended: true, limit: "256kb" }));
 

@@ -178,7 +178,7 @@ function formToInput(f: FormData): ProductInput {
   };
 }
 
-// ── Inline image uploader (presigned URL flow) ────────────────────────────
+// ── Inline image uploader ─────────────────────────────────────────────────
 function ImageUploader({
   value, onChange,
 }: { value: string; onChange: (url: string) => void }) {
@@ -188,30 +188,22 @@ function ImageUploader({
 
   const handleFile = async (file: File) => {
     if (!file.type.startsWith('image/')) { setErr('Please select an image file.'); return; }
+    if (file.size > 8 * 1024 * 1024) { setErr('Please select an image smaller than 8 MB.'); return; }
     setErr(''); setUploading(true);
     try {
-      // Step 1 — get presigned URL
-      const meta = await fetch('/api/storage/uploads/request-url', {
+      const response = await fetch('/api/storage/uploads/direct', {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+        headers: { 'Content-Type': file.type },
+        body: file,
       });
-      const metaBody = await meta.json().catch(() => null) as
-        | { uploadURL?: string; objectPath?: string; error?: string }
+      const body = await response.json().catch(() => null) as
+        | { objectPath?: string; error?: string }
         | null;
-      if (!meta.ok || !metaBody?.uploadURL || !metaBody.objectPath) {
-        throw new Error(metaBody?.error || 'Failed to get upload URL');
+      if (!response.ok || !body?.objectPath) {
+        throw new Error(body?.error || 'Failed to upload image');
       }
-      const { uploadURL, objectPath } = metaBody;
-
-      // Step 2 — upload directly to GCS
-      const putRes = await fetch(uploadURL, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
-      if (!putRes.ok) throw new Error(`Upload failed (${putRes.status})`);
-
-      // Step 3 — store serving path (objectPath is already /public-objects/... so
-      // unauthenticated storefront visitors can load product images)
-      onChange(`/api/storage${objectPath}`);
+      onChange(`/api/storage${body.objectPath}`);
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Upload failed. Please try again.');
     } finally {
