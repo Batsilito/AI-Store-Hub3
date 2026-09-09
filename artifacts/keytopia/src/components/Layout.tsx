@@ -1,5 +1,5 @@
 import { Link } from 'wouter';
-import { Home, Menu, Search, ShoppingBag, Store, User, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Home, Menu, Search, ShoppingBag, Store, User, X } from 'lucide-react';
 import { useUser } from '@clerk/react';
 import { useCart } from '../contexts/CartContext';
 import { useLang } from '../contexts/LanguageContext';
@@ -11,6 +11,11 @@ import { useLocation } from 'wouter';
 // Logo is served from the public/ folder
 const logoImg = `${import.meta.env.BASE_URL}logo.png`;
 
+function ChevronForDirection({ rtl }: { rtl: boolean }) {
+  const Icon = rtl ? ChevronLeft : ChevronRight;
+  return <Icon className="h-4 w-4" aria-hidden="true" />;
+}
+
 export default function Layout({ children }: { children: React.ReactNode }) {
   const { cartCount } = useCart();
   const { t, toggleLang, dir } = useLang();
@@ -21,6 +26,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const isProductPage = location.startsWith('/products/');
   const hideMobileNav = location.startsWith('/checkout') || location.startsWith('/admin') || isProductPage;
+  const isCheckout = location.startsWith('/checkout');
   const navigation = dir === 'rtl'
     ? [
         { label: 'الرئيسية', href: '/' },
@@ -37,7 +43,23 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-[100dvh] flex flex-col bg-background" dir={dir}>
-      <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-xl border-b border-black/[0.03]">
+      {isCheckout ? (
+        <header className="border-b border-slate-200 bg-white">
+          <div className="mx-auto flex h-16 max-w-[1120px] items-center justify-between gap-3 px-4 sm:px-6">
+            <Link href="/" className="flex h-10 w-28 items-center overflow-hidden sm:w-36" aria-label="Keytopia">
+              <img src={logoImg} alt="Keytopia" className="h-32 w-auto max-w-none object-contain sm:h-40" />
+            </Link>
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <button onClick={toggleLang} aria-label="Toggle language" className="grid min-h-11 min-w-11 place-items-center rounded-lg border border-slate-200 px-2 text-xs font-bold hover:bg-slate-50">{t('toggleLang')}</button>
+              <button onClick={() => setCurrency(currency === 'EGP' ? 'USD' : 'EGP')} aria-label={currency === 'EGP' ? t('switchToUsd') : t('switchToEgp')} className="grid min-h-11 min-w-11 place-items-center rounded-lg border border-slate-200 px-2 text-xs font-bold hover:bg-slate-50">{currency}</button>
+              <Link href="/" className="flex min-h-11 items-center gap-1 rounded-lg px-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 hover:text-primary">
+                {dir === 'rtl' ? 'العودة للسلة' : 'Back to cart'}
+                <ChevronForDirection rtl={dir === 'rtl'} />
+              </Link>
+            </div>
+          </div>
+        </header>
+      ) : <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-xl border-b border-black/[0.03]">
         <div className="max-w-7xl mx-auto px-3 md:px-6 h-16 md:h-20 flex items-center justify-between gap-2 md:gap-5">
           <button onClick={() => setIsMenuOpen(true)} aria-label={dir === 'rtl' ? 'فتح القائمة' : 'Open menu'} className="lg:hidden grid h-11 w-11 place-items-center rounded-xl text-foreground hover:bg-muted focus-visible:ring-2 focus-visible:ring-primary">
             <Menu className="h-5 w-5" />
@@ -117,20 +139,20 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             )}
           </div>
         </div>
-      </header>
+      </header>}
 
       <main className="flex-1 flex flex-col">
         {children}
       </main>
 
-      <footer className={`py-8 md:py-12 px-4 text-center text-sm text-muted-foreground border-t border-black/[0.03] mt-auto ${hideMobileNav ? '' : 'pb-24 md:pb-12'}`}>
+      {!isCheckout && <footer className={`py-8 md:py-12 px-4 text-center text-sm text-muted-foreground border-t border-black/[0.03] mt-auto ${hideMobileNav ? '' : 'pb-24 md:pb-12'}`}>
         <p>&copy; {new Date().getFullYear()} Keytopia. {t('allRightsReserved')}</p>
         <div className="mt-4 flex justify-center gap-6">
           <Link href="/policy" className="hover:text-foreground transition-colors">{t('policyLink')}</Link>
           <Link href="/orders" className="hover:text-foreground transition-colors">{dir === 'rtl' ? 'طلباتي' : 'My orders'}</Link>
           <Link href="/admin" className="hover:text-foreground transition-colors">{t('adminLogin')}</Link>
         </div>
-      </footer>
+      </footer>}
 
       <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
 

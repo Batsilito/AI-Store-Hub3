@@ -1,8 +1,6 @@
-import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, ChevronRight, ChevronLeft, Copy, Check, ExternalLink,
-  User, Mail, Phone, CreditCard, Tag, CheckCircle2, AlertCircle,
-  MessageCircle, Loader2, ShieldCheck, ShoppingBag, ArrowRight, Wallet, Banknote,
+  Tag, CheckCircle2, AlertCircle, MessageCircle, Loader2, ShoppingBag,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { SignIn, useAuth } from '@clerk/react';
@@ -444,6 +442,12 @@ export default function Checkout() {
   const [email, setEmail] = useState(() => sessionStorage.getItem('checkout_email') ?? '');
   const [phone, setPhone] = useState(() => sessionStorage.getItem('checkout_phone') ?? '');
   const [method, setMethod] = useState<PaymentMethod>(() => (sessionStorage.getItem('checkout_method') as PaymentMethod) ?? null);
+  const [payCurrency, setPayCurrency] = useState<PayCurrency>(() => {
+    const saved = sessionStorage.getItem('checkout_method');
+    return saved === 'paypal' || saved === 'paylater' || saved === 'card' ? 'USD' : 'EGP';
+  });
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const [couponOpen, setCouponOpen] = useState(false);
   const [autoLaunchPayment, setAutoLaunchPayment] = useState(false);
   const [paymentLaunchNonce, setPaymentLaunchNonce] = useState(0);
   const [promoInput, setPromoInput] = useState('');
@@ -464,7 +468,7 @@ export default function Checkout() {
   const paymentDetailsRef = useRef<HTMLDivElement>(null);
   const captureInFlightRef = useRef(false);
 
-  const currency: PayCurrency = method === 'paypal' || method === 'paylater' || method === 'card' ? 'USD' : 'EGP';
+  const currency = payCurrency;
   const subtotal = items.reduce((sum, item) => sum + (currency === 'USD' ? getItemUsdUnitPrice(item, rate) : getItemEgpUnitPrice(item, rate)) * item.quantity, 0);
   const discount = promo.status === 'valid' ? Math.round(subtotal * promo.percentage) / 100 : 0;
   const beforeCashback = Math.max(0, subtotal - discount);
@@ -483,6 +487,7 @@ export default function Checkout() {
     sessionStorage.setItem('checkout_email', email);
     sessionStorage.setItem('checkout_phone', phone);
     if (method) sessionStorage.setItem('checkout_method', method);
+    else sessionStorage.removeItem('checkout_method');
   }, [name, email, phone, method]);
 
   useEffect(() => {
@@ -505,6 +510,7 @@ export default function Checkout() {
       const response = await fetch('/api/promo-codes/validate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, productIds: items.map(i => i.id) }) });
       const result = await response.json();
       setPromo(result.valid ? { status: 'valid', code: result.code, percentage: result.percentage } : { status: 'invalid', code: '', percentage: 0 });
+      setCouponOpen(true);
     } catch { setPromo({ status: 'invalid', code: '', percentage: 0 }); }
   };
 
@@ -649,151 +655,80 @@ export default function Checkout() {
   if (!isLoaded || !isSignedIn) return <Layout><div className="grid min-h-[65vh] place-items-center bg-slate-50 px-4">{!isLoaded ? <Loader2 className="h-8 w-8 animate-spin text-primary"/> : <SignIn routing="path" path={`${import.meta.env.BASE_URL?.replace(/\/$/, '') || ''}/sign-in`} forceRedirectUrl={`${import.meta.env.BASE_URL?.replace(/\/$/, '') || ''}/checkout`} />}</div></Layout>;
 
   const methods = [
-    { id: 'instapay' as const, title: 'InstaPay', description: 'تحويل فوري آمن عبر تطبيق InstaPay', icon: <InstapayLogo />, currency: 'EGP' },
-    { id: 'vodafone' as const, title: 'Vodafone Cash', description: 'تحويل إلى محفظة فودافون كاش', icon: <VodafoneCashLogo />, currency: 'EGP' },
-    { id: 'paypal' as const, title: 'PayPal', description: 'الدفع من رصيدك أو حسابك على PayPal', icon: <PaypalLogo />, currency: 'USD' },
-    { id: 'paylater' as const, title: 'PayPal Pay Later', description: 'الدفع على دفعات عبر PayPal عند توفر الأهلية', icon: <PaypalLogo />, currency: 'USD' },
-    { id: 'card' as const, title: 'بطاقة ائتمان أو خصم', description: 'Visa أو Mastercard عبر بوابة PayPal الآمنة', icon: <div className="flex gap-1"><VisaLogo/><MastercardLogo/></div>, currency: 'USD' },
+    { id: 'instapay' as const, title: 'InstaPay', description: 'تحويل فوري عبر تطبيق InstaPay', icon: <InstapayLogo />, currency: 'EGP' as const },
+    { id: 'vodafone' as const, title: 'Vodafone Cash', description: 'تحويل إلى محفظة فودافون كاش', icon: <VodafoneCashLogo />, currency: 'EGP' as const },
+    { id: 'paypal' as const, title: 'PayPal', description: 'الدفع باستخدام حساب PayPal', icon: <PaypalLogo />, currency: 'USD' as const },
+    { id: 'card' as const, title: 'بطاقة ائتمان أو خصم', description: 'Visa أو Mastercard', icon: <div className="flex gap-1"><VisaLogo/><MastercardLogo/></div>, currency: 'USD' as const },
   ];
-  const cta = method === 'paypal' ? 'الدفع باستخدام PayPal' : method === 'paylater' ? 'الدفع بالتقسيط عبر PayPal' : method === 'card' ? 'الدفع بالبطاقة' : method === 'instapay' ? 'المتابعة إلى InstaPay' : method === 'vodafone' ? 'عرض بيانات Vodafone Cash' : 'اختر وسيلة الدفع';
-  const paymentPoweredBy = (
-    <div className="mt-2 flex items-center justify-center gap-1 text-xs italic text-slate-500" dir="ltr">
-      <span>Powered by</span>
-      <PaypalLogo />
-    </div>
-  );
-  const renderPaymentMethod = (m: (typeof methods)[number], compact = false) => {
-    const selected = method === m.id;
-    const isPaypal = m.id === 'paypal';
-    const isCard = m.id === 'card';
-    const isPayLater = m.id === 'paylater';
-    const compactClass = isPaypal
-      ? 'border-transparent bg-[#ffc439] text-[#25313b] shadow-[0_5px_14px_rgba(245,189,47,.2)] hover:bg-[#f8bb32]'
-      : isCard
-        ? 'border-transparent bg-[#2d2d2d] text-white shadow-[0_5px_14px_rgba(45,45,45,.16)] hover:bg-[#242424]'
-        : 'border-slate-200 bg-slate-100 text-slate-800 hover:border-slate-300';
-    return (
-      <button
-        key={m.id}
-        type="button"
-        role="radio"
-        aria-checked={selected}
-        onClick={() => selectMethod(m.id)}
-        className={compact
-          ? `relative flex min-h-[88px] w-full items-center justify-center rounded-[0.65rem] border px-5 py-4 transition focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:ring-offset-2 ${compactClass} ${selected ? 'ring-2 ring-cyan-400 ring-offset-2' : ''}`
-          : `relative flex min-h-[104px] w-full cursor-pointer items-center gap-3 rounded-2xl border-2 p-4 text-right transition focus:outline-none focus:ring-2 focus:ring-primary ${selected ? 'border-primary bg-blue-50/60 shadow-sm' : 'border-slate-200 hover:border-slate-300'}`}
-      >
-        {compact ? (
-          <span className="flex items-center justify-center gap-2.5" dir="ltr">
-            {isPaypal ? (
-              <>
-                <span className="text-lg font-bold">Pay with</span>
-                <PaypalLogo size="large" />
-              </>
-            ) : (
-              <>
-                {isCard ? <CreditCard className="h-8 w-8" strokeWidth={1.8} /> : isPayLater ? <PaypalLogo /> : m.icon}
-                <span className="text-lg font-bold">{isCard ? 'Debit or Credit Card' : m.title}</span>
-              </>
-            )}
-          </span>
-        ) : (
-          <>
-            <span className="min-w-0 flex-1">
-              <span className="flex items-center justify-between gap-2">
-                {m.icon}
-                <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold" dir="ltr">{m.currency}</span>
-              </span>
-              <span className="mt-2 block text-xs text-slate-500">{m.description}</span>
-            </span>
-            <span aria-hidden="true" className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border-2 ${selected ? 'border-primary' : 'border-slate-400'}`}>
-              {selected && <span className="h-2.5 w-2.5 rounded-full bg-primary" />}
-            </span>
-          </>
-        )}
-      </button>
-    );
+  const cta = method === 'instapay' ? 'المتابعة إلى InstaPay' : method === 'vodafone' ? 'عرض بيانات Vodafone Cash' : 'اختر وسيلة الدفع';
+  const availableMethods = methods.filter(item => item.currency === payCurrency && (item.id !== 'card' || sdkState !== 'ready' || cardMode));
+
+  const changeCurrency = (next: PayCurrency) => {
+    if (busy || next === payCurrency) return;
+    setPayCurrency(next);
+    setMethod(null);
+    setCashbackUsed(0);
+    setCashbackInput('');
+    setError('');
+    localOrderRef.current = null;
   };
-  const renderAutomaticPaymentPanel = (paymentMethod: 'paypal' | 'paylater' | 'card') => (
-    <div ref={paymentDetailsRef} className="mt-5 w-full scroll-mt-6 rounded-[2rem] border-2 border-cyan-200/90 bg-[#f7fafc] p-4 shadow-[0_0_28px_rgba(34,211,238,.16)] sm:p-6">
-      <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-slate-600">
-        <ShieldCheck className="h-4 w-4 text-emerald-600" />
-        بيانات الدفع مشفرة وتُعالج بأمان عبر PayPal
-      </div>
-      {paymentMethod === 'paypal' && <p className="mb-3 text-sm text-slate-600">سيتم فتح نافذة PayPal لتسجيل الدخول وإتمام الدفع بأمان.</p>}
-      {paymentMethod === 'paylater' && <p className="mb-3 text-sm text-slate-600">سيعرض PayPal خيارات الدفع على دفعات إذا كنت مؤهلاً لها.</p>}
-      {paymentMethod === 'card' && <p className="mb-3 text-sm text-slate-600">{cardMode === 'advanced_cards' ? 'أدخل بيانات بطاقة Visa أو Mastercard مباشرة في الحقول الآمنة أدناه.' : 'سيتم فتح نافذة PayPal الآمنة لإدخال بيانات بطاقة Visa أو Mastercard.'}</p>}
-      {paymentMethod === 'card' && <p className="mb-3 text-xs leading-6 text-slate-500">
-        عند الدفع بالبطاقة، فإنك تقر بأن بياناتك ستُعالج بواسطة PayPal وفقاً لـ <a className="font-semibold text-primary underline" href="https://www.paypal.com/webapps/mpp/ua/privacy-full" target="_blank" rel="noreferrer">بيان خصوصية PayPal</a>.
-        By paying with your card, you acknowledge that your data will be processed by PayPal subject to the <a className="font-semibold text-primary underline" href="https://www.paypal.com/webapps/mpp/ua/privacy-full" target="_blank" rel="noreferrer">PayPal Privacy Statement</a>.
-      </p>}
-      {sdkState === 'loading' && <div className="flex min-h-14 items-center justify-center gap-2"><Loader2 className="h-5 w-5 animate-spin" />جار تجهيز الدفع الآمن…</div>}
-      {sdkState === 'unavailable' && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">وسيلة الدفع غير متاحة حالياً. جرّب وسيلة أخرى أو حاول لاحقاً.</p>}
-      {sdkState === 'ready' && paymentMethod === 'card' && !cardMode && <p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">الدفع بالبطاقات غير متاح لهذا التاجر أو بهذه العملة عبر PayPal حالياً. جرّب PayPal أو وسيلة دفع أخرى.</p>}
-      {!customerFieldsReady && <button type="button" onClick={validCustomer} className="min-h-12 w-full rounded-xl bg-slate-900 px-4 font-bold text-white">{cta}</button>}
-      {sdkState === 'ready' && ((paymentMethod === 'paypal' && paypalEligible) || (paymentMethod === 'paylater' && payLaterEligible && payLaterDetails) || (paymentMethod === 'card' && cardMode)) && sdk && customerFieldsReady && (
-        <PayPalCheckout
-          key={`${paymentMethod}-${paymentLaunchNonce}`}
-          method={paymentMethod}
-          cardMode={cardMode}
-          payLaterDetails={payLaterDetails}
-          sdk={sdk}
-          createOrder={createPayPalOrder}
-          cardholderName={name}
-          onSuccess={capture}
-          onError={setError}
-          isRtl
-          disabled={busy}
-          autoStart={autoLaunchPayment}
-        />
-      )}
+
+  const renderPaymentMethod = (payment: (typeof methods)[number]) => {
+    const selected = method === payment.id;
+    return <button key={payment.id} type="button" role="radio" aria-checked={selected} disabled={busy} onClick={() => selectMethod(payment.id)} className={`flex min-h-[72px] w-full items-center gap-3 rounded-xl border px-3 py-3 text-right transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-60 ${selected ? 'border-primary bg-blue-50/70 ring-1 ring-primary' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
+      <span className="grid min-h-8 min-w-16 place-items-center">{payment.icon}</span>
+      <span className="min-w-0 flex-1"><strong className="block text-[15px] text-slate-900">{payment.title}</strong><span className={`mt-0.5 text-xs text-slate-500 ${selected ? 'block' : 'hidden md:block'}`}>{payment.description}</span></span>
+      <span aria-hidden="true" className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border-2 ${selected ? 'border-primary' : 'border-slate-400'}`}>{selected && <span className="h-2.5 w-2.5 rounded-full bg-primary" />}</span>
+    </button>;
+  };
+
+  const renderAutomaticPaymentPanel = (paymentMethod: 'paypal' | 'paylater' | 'card') => <div ref={paymentDetailsRef} className="mt-4 max-w-[420px] scroll-mt-6 border-t border-slate-200 pt-4">
+    {paymentMethod === 'paypal' && <p className="mb-3 text-[13px] text-slate-600">أكمل الدفع من خلال زر PayPal الرسمي.</p>}
+    {paymentMethod === 'card' && <p className="mb-3 text-[13px] leading-5 text-slate-600">{cardMode === 'advanced_cards' ? 'أدخل بيانات البطاقة في الحقول الآمنة أدناه.' : 'ستُفتح نافذة PayPal الآمنة لإدخال بيانات البطاقة.'}</p>}
+    {sdkState === 'loading' && <div className="flex min-h-12 items-center gap-2 text-sm text-slate-600"><Loader2 className="h-5 w-5 animate-spin" />جار تجهيز الدفع…</div>}
+    {sdkState === 'unavailable' && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">وسيلة الدفع غير متاحة حالياً. جرّب وسيلة أخرى أو حاول لاحقاً.</p>}
+    {sdkState === 'ready' && paymentMethod === 'card' && !cardMode && <p role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">الدفع بالبطاقات غير متاح لهذا الطلب حالياً.</p>}
+    {!customerFieldsReady && <p role="status" className="rounded-lg bg-amber-50 p-3 text-[13px] text-amber-800">أكمل بيانات العميل الصحيحة أولاً لإظهار وسيلة الدفع.</p>}
+    {sdkState === 'ready' && ((paymentMethod === 'paypal' && paypalEligible) || (paymentMethod === 'card' && cardMode)) && sdk && customerFieldsReady && <PayPalCheckout key={`${paymentMethod}-${paymentLaunchNonce}`} method={paymentMethod} cardMode={cardMode} payLaterDetails={payLaterDetails} sdk={sdk} createOrder={createPayPalOrder} cardholderName={name} onSuccess={capture} onError={setError} isRtl={dir === 'rtl'} disabled={busy} autoStart={false} />}
+  </div>;
+
+  const paymentPanel = method === 'paypal' ? renderAutomaticPaymentPanel('paypal') : method === 'card' ? renderAutomaticPaymentPanel('card') : null;
+
+  const summaryDetails = <>
+    <div className="divide-y divide-slate-100 px-5">{items.map(item => { const unit=currency==='USD'?getItemUsdUnitPrice(item,rate):getItemEgpUnitPrice(item,rate); return <div key={`${item.id}-${item.selectedDuration}`} className="flex gap-3 py-4">
+      <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-slate-100">{item.coverImageUrl?<img src={item.coverImageUrl} alt="" className="h-full w-full object-cover"/>:<span className="grid h-full place-items-center font-bold text-slate-400">{item.name[0]}</span>}<span className="absolute left-0 top-0 grid h-5 min-w-5 place-items-center rounded-br-lg bg-slate-800 px-1 text-[10px] text-white">{item.quantity}</span></div>
+      <div className="min-w-0 flex-1"><h3 className="break-words text-[15px] font-semibold leading-5">{item.name}</h3><p className="mt-1 text-[13px] text-slate-500">{item.selectedDuration} · الكمية {item.quantity}</p></div>
+      <strong className="max-w-24 shrink-0 text-left text-sm" dir="ltr">{(unit*item.quantity).toFixed(2)} {currency}</strong>
+    </div>})}</div>
+    <div className="border-t border-slate-100 p-5">
+      <button type="button" aria-expanded={couponOpen || promo.status !== 'idle'} onClick={() => setCouponOpen(open => !open)} className="flex min-h-11 w-full items-center justify-between text-sm font-semibold text-primary"><span className="flex items-center gap-2"><Tag className="h-4 w-4"/>لديك كود خصم؟</span>{couponOpen || promo.status !== 'idle' ? <ChevronLeft className="h-4 w-4 -rotate-90"/> : <ChevronLeft className="h-4 w-4"/>}</button>
+      {(couponOpen || promo.status !== 'idle') && <div className="pb-2"><div className="flex gap-2"><input value={promoInput} onChange={e=>setPromoInput(e.target.value)} placeholder="كود الخصم" className="h-12 min-w-0 flex-1 rounded-[10px] border border-slate-200 px-3 text-base"/><button onClick={applyPromo} disabled={promo.status==='loading'} className="min-h-12 rounded-[10px] bg-slate-900 px-4 text-sm font-bold text-white">تطبيق</button></div>{promo.status==='valid'&&<p className="mt-2 text-[13px] font-semibold text-emerald-700">تم تطبيق خصم {promo.percentage}%</p>}{promo.status==='invalid'&&<p className="mt-2 text-[13px] text-red-600">الكود غير صالح أو لا ينطبق على هذه المنتجات.</p>}</div>}
+      {isSignedIn&&availableCashback>0&&<div className="mt-3 flex gap-2"><input value={cashbackInput} onChange={e=>setCashbackInput(e.target.value)} type="number" min="0" max={availableCashback} placeholder={`كاش باك متاح: ${availableCashback.toFixed(2)}`} className="h-12 min-w-0 flex-1 rounded-[10px] border border-slate-200 px-3 text-base"/><button onClick={()=>{const n=Number(cashbackInput); if(n>0&&n<=availableCashback&&n<=beforeCashback){setCashbackUsed(Math.round(n*100)/100);setError('')}else setError('قيمة الكاش باك غير صالحة.')}} className="min-h-12 rounded-[10px] border px-3 text-sm font-bold">استخدام</button></div>}
+      <dl className="mt-4 space-y-2.5 text-sm"><div className="flex justify-between"><dt className="text-slate-500">الإجمالي الفرعي</dt><dd dir="ltr">{subtotal.toFixed(2)} {currency}</dd></div>{discount>0&&<div className="flex justify-between text-emerald-700"><dt>الخصم</dt><dd dir="ltr">-{discount.toFixed(2)} {currency}</dd></div>}{cashbackUsed>0&&<div className="flex justify-between text-emerald-700"><dt>الكاش باك المستخدم</dt><dd dir="ltr">-{cashbackUsed.toFixed(2)} {currency}</dd></div>}<div className="flex items-end justify-between border-t pt-3"><dt className="font-bold">الإجمالي النهائي</dt><dd className="text-[22px] font-black" dir="ltr">{total.toFixed(2)} {currency}</dd></div><div className="flex justify-between text-xs text-slate-500"><dt>كاش باك متوقع</dt><dd dir="ltr">{(total*.05).toFixed(2)} {currency}</dd></div></dl>
     </div>
-  );
+  </>;
 
-  const automaticPaymentPanel = method === 'paypal' || method === 'paylater'
-    ? renderAutomaticPaymentPanel(method)
-    : null;
-  const cardPaymentPanel = method === 'card' ? renderAutomaticPaymentPanel('card') : null;
-
-  return <Layout><main className="bg-[#f6f8fb]" dir="rtl">
-    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:py-10">
-      <button onClick={() => navigate('/')} className="mb-5 flex min-h-11 items-center gap-2 text-sm font-bold text-slate-600 hover:text-primary"><ArrowRight className="h-4 w-4"/>العودة إلى السلة والمتجر</button>
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.08fr)_minmax(360px,.92fr)]">
-        <section className="order-2 space-y-5 lg:order-1">
-          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7"><div className="flex items-center gap-3"><div className="grid h-10 w-10 place-items-center rounded-xl bg-blue-50 text-primary"><User className="h-5 w-5"/></div><div><h1 className="text-xl font-bold text-slate-950">بيانات العميل</h1><p className="text-sm text-slate-500">سنستخدمها لتأكيد وتسليم طلبك فقط</p></div></div>
-            <div className="mt-6 grid gap-4 sm:grid-cols-2"><label className="sm:col-span-2 text-sm font-bold">الاسم الكامل<input value={name} onChange={e=>setName(e.target.value)} autoComplete="name" className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 outline-none focus:border-primary focus:ring-2 focus:ring-blue-100" placeholder="اكتب اسمك الكامل"/></label><label className="text-sm font-bold">البريد الإلكتروني<input type="email" value={email} onChange={e=>setEmail(e.target.value)} autoComplete="email" className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 outline-none focus:border-primary focus:ring-2 focus:ring-blue-100" placeholder="name@example.com" dir="ltr"/></label><label className="text-sm font-bold">رقم الهاتف<input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} autoComplete="tel" className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 outline-none focus:border-primary focus:ring-2 focus:ring-blue-100" placeholder="01xxxxxxxxx" dir="ltr"/></label></div>
+  return <Layout><main className={`min-h-full bg-[#f6f8fb] text-slate-950 ${method === 'instapay' || method === 'vodafone' ? 'pb-28 md:pb-8' : 'pb-8'}`} dir={dir}>
+    <div className="mx-auto max-w-[1120px] px-4 pt-5 md:max-w-[720px] md:px-6 md:pt-8 lg:max-w-[1120px]">
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-8">
+        <section className="order-2 space-y-5 lg:order-1 lg:space-y-6">
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 md:p-6"><div><h1 className="text-xl font-semibold">بيانات العميل</h1><p className="mt-1 text-[13px] text-slate-500">سنستخدمها لتأكيد وتسليم طلبك فقط</p></div>
+            <div className="mt-5 grid gap-4 md:grid-cols-2"><label className="text-sm font-semibold md:col-span-2">الاسم الكامل<input value={name} onChange={e=>setName(e.target.value)} autoComplete="name" className="mt-2 h-12 w-full rounded-[10px] border border-slate-200 bg-slate-50 px-4 text-base outline-none focus:border-primary focus:ring-2 focus:ring-blue-100" placeholder="اكتب اسمك الكامل"/></label><label className="text-sm font-semibold">البريد الإلكتروني<input type="email" value={email} onChange={e=>setEmail(e.target.value)} autoComplete="email" className="mt-2 h-12 w-full rounded-[10px] border border-slate-200 bg-slate-50 px-4 text-base outline-none focus:border-primary focus:ring-2 focus:ring-blue-100" placeholder="name@example.com" dir="ltr"/></label><label className="text-sm font-semibold">رقم الهاتف<input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} autoComplete="tel" className="mt-2 h-12 w-full rounded-[10px] border border-slate-200 bg-slate-50 px-4 text-base outline-none focus:border-primary focus:ring-2 focus:ring-blue-100" placeholder="01xxxxxxxxx" dir="ltr"/></label></div>
           </div>
-           <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7"><div className="flex items-center gap-3"><div className="grid h-10 w-10 place-items-center rounded-xl bg-blue-50 text-primary"><Wallet className="h-5 w-5"/></div><div><h2 className="text-xl font-bold">وسيلة الدفع</h2><p className="text-sm text-slate-500">اختر الطريقة المناسبة لك</p></div></div>
-               {[{label:'الدفع بالجنيه المصري', ids:['instapay','vodafone']}, {label:'الدفع بالدولار',ids:['paypal','paylater','card']}].map(group => {
-                 const compact = group.label === 'الدفع بالدولار';
-                 return (
-                   <fieldset key={group.label} className="mt-6">
-                     <legend className="mb-3 flex w-full items-center gap-2 text-sm font-bold text-slate-700">
-                       <Banknote className="h-4 w-4 text-primary"/>{group.label}
-                     </legend>
-                      <div
-                        role="radiogroup"
-                        aria-label={group.label}
-                        className={compact
-                          ? 'w-full space-y-3 rounded-[2rem] border-2 border-cyan-300/90 bg-[#f7fafc] p-4 shadow-[0_0_28px_rgba(34,211,238,.14)] sm:p-5'
-                          : 'grid gap-3 sm:grid-cols-2'}
-                      >
-                       {methods.filter(m => group.ids.includes(m.id) && (m.id !== 'paylater' || payLaterEligible)).map(m => renderPaymentMethod(m, compact))}
-                        {compact && cardPaymentPanel}
-                        {compact && paymentPoweredBy}
-                     </div>
-                   </fieldset>
-                 );
-               })}
-             {error&&<p role="alert" className="mt-4 flex gap-2 rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700"><AlertCircle className="h-5 w-5 shrink-0"/>{error}</p>}
-             {method!=='paypal'&&method!=='paylater'&&method!=='card'&&<button onClick={submitManual} disabled={!method||busy} className="mt-6 flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl bg-primary px-5 text-base font-bold text-white shadow-lg shadow-blue-200 disabled:cursor-not-allowed disabled:opacity-50">{busy&&<Loader2 className="h-5 w-5 animate-spin"/>}{cta}</button>}
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 md:p-6"><div><h2 className="text-xl font-semibold">طريقة الدفع</h2><p className="mt-1 text-[13px] text-slate-500">اختر العملة ثم وسيلة الدفع المناسبة</p></div>
+            <div role="radiogroup" aria-label="عملة الدفع" className="mt-5 grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1.5">{(['EGP','USD'] as const).map(value=><button key={value} type="button" role="radio" aria-checked={payCurrency===value} disabled={busy} onClick={()=>changeCurrency(value)} className={`min-h-12 rounded-lg px-2 text-sm font-semibold transition ${payCurrency===value?'bg-white text-primary shadow-sm':'text-slate-600'}`}><span className="block">{value==='EGP'?'الجنيه المصري':'الدولار الأمريكي'}</span><span dir="ltr" className="text-xs">{value}</span></button>)}</div>
+            <div role="radiogroup" aria-label="وسيلة الدفع" className={`mt-4 grid gap-3 ${payCurrency==='EGP'?'lg:grid-cols-2':''}`}>{availableMethods.map(renderPaymentMethod)}</div>
+            {paymentPanel}
+            {error&&<p role="alert" className="mt-4 flex gap-2 rounded-lg bg-red-50 p-3 text-sm font-semibold text-red-700"><AlertCircle className="h-5 w-5 shrink-0"/>{error}</p>}
+            {(method==='instapay'||method==='vodafone')&&<button onClick={submitManual} disabled={busy} className="mt-5 hidden min-h-12 w-full items-center justify-center gap-2 rounded-[10px] bg-primary px-5 font-bold text-white disabled:opacity-50 md:flex">{busy&&<Loader2 className="h-5 w-5 animate-spin"/>}{cta}</button>}
           </div>
         </section>
-        <aside className="order-1 lg:sticky lg:top-24 lg:order-2"><div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm"><div className="border-b border-slate-100 p-5 sm:p-6"><div className="flex items-center justify-between"><div><h2 className="text-lg font-bold">ملخص الطلب</h2><p className="mt-1 text-xs text-slate-500">{productCount} {productCount===1?'منتج':'منتجات'}</p></div><ShoppingBag className="h-6 w-6 text-primary"/></div></div><div className="max-h-64 space-y-4 overflow-y-auto p-5 lg:max-h-[42vh]">{items.map(item=>{const unit=currency==='USD'?getItemUsdUnitPrice(item,rate):getItemEgpUnitPrice(item,rate); return <div key={`${item.id}-${item.selectedDuration}`} className="flex gap-3"><div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-slate-100">{item.coverImageUrl?<img src={item.coverImageUrl} alt="" className="h-full w-full object-cover"/>:<span className="grid h-full place-items-center font-bold text-slate-400">{item.name[0]}</span>}<span className="absolute -left-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-slate-800 px-1 text-[10px] text-white">{item.quantity}</span></div><div className="min-w-0 flex-1"><h3 className="truncate text-sm font-bold">{item.name}</h3><p className="mt-0.5 text-xs text-slate-500">{item.selectedDuration}</p>{item.description&&<p className="mt-1 line-clamp-1 text-[11px] text-slate-400">{item.description}</p>}</div><strong className="shrink-0 text-sm" dir="ltr">{(unit*item.quantity).toFixed(2)} {currency}</strong></div>})}</div>
-          <div className="border-t border-slate-100 p-5 sm:p-6"><div className="flex gap-2"><input value={promoInput} onChange={e=>setPromoInput(e.target.value)} placeholder="كود الخصم" className="min-h-11 min-w-0 flex-1 rounded-xl border border-slate-200 px-3"/><button onClick={applyPromo} disabled={promo.status==='loading'} className="min-h-11 rounded-xl bg-slate-900 px-4 text-sm font-bold text-white">تطبيق</button></div>{promo.status==='valid'&&<p className="mt-2 text-xs font-bold text-emerald-700">تم تطبيق خصم {promo.percentage}%</p>}{promo.status==='invalid'&&<p className="mt-2 text-xs text-red-600">الكود غير صالح أو لا ينطبق على هذه المنتجات.</p>}
-          {isSignedIn&&availableCashback>0&&<div className="mt-3 flex gap-2"><input value={cashbackInput} onChange={e=>setCashbackInput(e.target.value)} type="number" min="0" max={availableCashback} placeholder={`كاش باك متاح: ${availableCashback.toFixed(2)}`} className="min-h-11 min-w-0 flex-1 rounded-xl border border-slate-200 px-3"/><button onClick={()=>{const n=Number(cashbackInput); if(n>0&&n<=availableCashback&&n<=beforeCashback){setCashbackUsed(Math.round(n*100)/100);setError('')}else setError('قيمة الكاش باك غير صالحة.')}} className="rounded-xl border px-4 text-sm font-bold">استخدام</button></div>}
-           <dl className="mt-5 space-y-3 text-sm"><div className="flex justify-between"><dt className="text-slate-500">الإجمالي الفرعي</dt><dd dir="ltr">{subtotal.toFixed(2)} {currency}</dd></div>{discount>0&&<div className="flex justify-between text-emerald-700"><dt>الخصم</dt><dd dir="ltr">-{discount.toFixed(2)} {currency}</dd></div>}{cashbackUsed>0&&<div className="flex justify-between text-emerald-700"><dt>الكاش باك المستخدم</dt><dd dir="ltr">-{cashbackUsed.toFixed(2)} {currency}</dd></div>}<div className="flex justify-between border-t pt-4 text-lg font-black"><dt>الإجمالي النهائي</dt><dd dir="ltr">{total.toFixed(2)} {currency}</dd></div><div className="flex justify-between text-xs text-slate-500"><dt>كاش باك متوقع</dt><dd dir="ltr">{(total*.05).toFixed(2)} {currency}</dd></div></dl></div></div>{automaticPaymentPanel}</aside>
+        <aside className="order-1 lg:order-2 lg:sticky lg:top-4"><div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+          <button type="button" aria-expanded={summaryOpen} onClick={()=>setSummaryOpen(open=>!open)} className="flex min-h-[72px] w-full items-center justify-between gap-3 p-5 text-right lg:pointer-events-none"><span><span className="block text-lg font-semibold">ملخص الطلب</span><span className="mt-1 block text-xs text-slate-500">{productCount} {productCount===1?'منتج':'منتجات'}</span></span><span className="flex items-center gap-2"><strong className="text-base lg:hidden" dir="ltr">{total.toFixed(2)} {currency}</strong><ChevronLeft className={`h-5 w-5 transition lg:hidden ${summaryOpen?'-rotate-90':''}`}/></span></button>
+          <div className={`${summaryOpen?'block':'hidden'} lg:block`}>{summaryDetails}</div>
+        </div></aside>
       </div>
     </div>
+    {(method==='instapay'||method==='vodafone')&&<div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 px-4 pt-3 backdrop-blur md:hidden" style={{paddingBottom:'max(12px, env(safe-area-inset-bottom))'}}><div className="mx-auto flex max-w-md items-center gap-3"><div className="shrink-0"><span className="block text-xs text-slate-500">الإجمالي</span><strong className="text-base" dir="ltr">{total.toFixed(2)} {currency}</strong></div><button onClick={submitManual} disabled={busy} className="flex min-h-12 flex-1 items-center justify-center gap-2 rounded-[10px] bg-primary px-4 font-bold text-white disabled:opacity-50">{busy&&<Loader2 className="h-5 w-5 animate-spin"/>}{cta}</button></div></div>}
   </main></Layout>;
 }
